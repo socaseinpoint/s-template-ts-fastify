@@ -1,0 +1,90 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  role      Role     @default(USER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  items     Item[]
+  tokens    Token[]
+  
+  @@index([email])
+}
+
+model Item {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  category    ItemCategory
+  price       Float
+  quantity    Int          @default(0)
+  status      ItemStatus   @default(AVAILABLE)
+  tags        String[]
+  metadata    Json?
+  
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([userId])
+  @@index([category])
+  @@index([status])
+}
+
+model Token {
+  id           String    @id @default(uuid())
+  token        String    @unique
+  type         TokenType
+  expiresAt    DateTime
+  
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  
+  createdAt    DateTime  @default(now())
+  
+  @@index([token])
+  @@index([userId])
+}
+
+enum Role {
+  ADMIN
+  USER
+  MODERATOR
+}
+
+enum ItemCategory {
+  ELECTRONICS
+  CLOTHING
+  FOOD
+  BOOKS
+  OTHER
+}
+
+enum ItemStatus {
+  AVAILABLE
+  OUT_OF_STOCK
+  DISCONTINUED
+}
+
+enum TokenType {
+  ACCESS
+  REFRESH
+}

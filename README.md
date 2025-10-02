@@ -1,19 +1,24 @@
-# TypeScript Service Template
+# Fastify TypeScript Service Template
 
-A production-ready TypeScript service template with ESLint, Prettier, Husky, and Vitest pre-configured.
+A production-ready Fastify service template with TypeScript, Swagger, authentication, and comprehensive tooling.
 
 ## Features
 
+- ⚡ **Fastify** - High-performance web framework
 - 🚀 **TypeScript** - Type-safe development with path aliases
-- 📝 **ESLint & Prettier** - Code quality and formatting
-- 🪝 **Husky** - Git hooks for pre-commit checks
-- 🧪 **Vitest** - Fast unit testing and coverage
-- 📊 **Health Checks** - Built-in health monitoring
-- 📦 **Modular Architecture** - Clean service-based structure
-- 🔧 **Environment Config** - Dotenv configuration
-- 📖 **Logging** - Structured logging with levels
-- 🔄 **Graceful Shutdown** - Proper cleanup on termination
+- 📝 **Swagger/OpenAPI** - Auto-generated API documentation
+- 🔐 **Authentication** - JWT-based auth with refresh tokens
 - 🎯 **Path Aliases** - Use `@/` for clean imports from `src/`
+- 📊 **Health Checks** - Built-in health monitoring endpoints
+- 🗄️ **Prisma ORM** - Type-safe database access (optional)
+- 🔄 **Redis Support** - Caching and session management (optional)
+- 📦 **Modular Architecture** - Clean service-based structure
+- 🪝 **Git Hooks** - Husky for pre-commit checks
+- 🧪 **Testing** - Vitest for unit testing
+- 📝 **ESLint & Prettier** - Code quality and formatting
+- 🔧 **Environment Config** - Dotenv configuration
+- 🌐 **CORS** - Configurable CORS settings
+- 📖 **Logging** - Structured logging with levels
 
 ## Project Structure
 
@@ -21,24 +26,38 @@ A production-ready TypeScript service template with ESLint, Prettier, Husky, and
 ts-service-template/
 ├── src/
 │   ├── config/          # Configuration management
-│   │   └── index.ts
+│   │   ├── index.ts     # Environment variables
+│   │   └── swagger.ts   # Swagger configuration
+│   ├── routes/          # API routes
+│   │   ├── index.ts     # Route registration
+│   │   ├── auth.routes.ts
+│   │   ├── user.routes.ts
+│   │   └── item.routes.ts
 │   ├── services/        # Business logic services
-│   │   ├── app.service.ts
-│   │   ├── health.service.ts
-│   │   └── data.service.ts
+│   │   ├── auth.service.ts
+│   │   ├── user.service.ts
+│   │   ├── item.service.ts
+│   │   ├── database.service.ts
+│   │   └── redis.service.ts
+│   ├── schemas/         # Request/Response schemas
+│   │   ├── auth.schemas.ts
+│   │   ├── user.schemas.ts
+│   │   └── item.schemas.ts
+│   ├── types/           # TypeScript type definitions
+│   │   ├── index.ts
+│   │   └── fastify.d.ts
 │   ├── utils/           # Utility functions
 │   │   ├── logger.ts
 │   │   ├── errors.ts
 │   │   └── helpers.ts
-│   └── index.ts         # Application entry point
-├── .husky/              # Git hooks
+│   └── server.ts        # Application entry point
+├── prisma/              # Prisma ORM (optional)
+│   └── schema.prisma
 ├── dist/                # Compiled output
-├── coverage/            # Test coverage reports
+├── .husky/              # Git hooks
 ├── .env.example         # Environment variables template
-├── .eslintrc.js         # ESLint configuration
-├── .prettierrc          # Prettier configuration
 ├── tsconfig.json        # TypeScript configuration
-├── vitest.config.ts     # Vitest configuration
+├── vitest.config.ts     # Test configuration
 └── package.json
 ```
 
@@ -48,6 +67,8 @@ ts-service-template/
 
 - Node.js >= 18.0.0
 - npm or yarn
+- PostgreSQL (optional, for database)
+- Redis (optional, for caching)
 
 ### Installation
 
@@ -65,11 +86,21 @@ npm install
 3. Set up environment variables:
 ```bash
 cp .env.example .env
+# Edit .env with your configuration
 ```
 
 4. Initialize Husky hooks:
 ```bash
 npm run prepare
+```
+
+5. (Optional) Set up database:
+```bash
+# Generate Prisma client
+npm run prisma:generate
+
+# Run migrations
+npm run prisma:migrate
 ```
 
 ## Development
@@ -105,92 +136,103 @@ npm run test          # Run once
 npm run test:watch    # Watch mode
 npm run test:ui       # UI mode
 npm run test:coverage # With coverage
+
+# Prisma commands (if using database)
+npm run prisma:generate  # Generate Prisma client
+npm run prisma:migrate   # Run migrations
+npm run prisma:studio    # Open Prisma Studio
 ```
+
+## API Documentation
+
+When the server is running, Swagger documentation is available at:
+
+```
+http://localhost:3000/docs
+```
+
+### Available Endpoints
+
+#### System
+- `GET /` - Welcome endpoint
+- `GET /health` - Health check
+
+#### Authentication
+- `POST /auth/login` - User login
+- `POST /auth/register` - User registration
+- `POST /auth/refresh` - Refresh access token
+- `POST /auth/logout` - User logout
+
+#### Users (Protected)
+- `GET /users` - Get all users (paginated)
+- `GET /users/:id` - Get user by ID
+- `PUT /users/:id` - Update user
+- `DELETE /users/:id` - Delete user
+
+#### Items (Protected)
+- `GET /items` - Get all items (paginated, filtered)
+- `GET /items/:id` - Get item by ID
+- `POST /items` - Create new item
+- `PUT /items/:id` - Update item
+- `DELETE /items/:id` - Delete item
+- `POST /items/batch-delete` - Delete multiple items
+
+## Configuration
 
 ### Environment Variables
 
-Configure your service using environment variables. See `.env.example` for all available options:
+Configure your service using environment variables. See `.env.example`:
 
-- `NODE_ENV` - Environment (development/production)
-- `PORT` - Service port (default: 3000)
-- `LOG_LEVEL` - Logging level (error/warn/info/debug)
-- `SERVICE_NAME` - Service identifier
-- `SERVICE_VERSION` - Service version
-- `DATABASE_URL` - Database connection string
-- `REDIS_URL` - Redis connection string
-- `API_KEY` - API authentication key
-- `ENABLE_METRICS` - Enable metrics collection
-- `ENABLE_HEALTH_CHECK` - Enable health check endpoint
+```env
+# Node environment
+NODE_ENV=development
 
-### Health Check
+# Server configuration
+PORT=3000
+HOST=0.0.0.0
+LOG_LEVEL=info
 
-When `ENABLE_HEALTH_CHECK=true`, the service exposes a health endpoint at:
+# Service info
+SERVICE_NAME=fastify-service
+SERVICE_VERSION=1.0.0
 
-```
-GET http://localhost:3001/health
-```
+# Database (PostgreSQL)
+DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 
-Response example:
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "service": "ts-service",
-  "version": "1.0.0",
-  "uptime": 123456,
-  "checks": {
-    "memory": {
-      "status": "ok",
-      "message": "Memory usage: 45.23%"
-    },
-    "database": {
-      "status": "ok",
-      "message": "Database connection healthy"
-    },
-    "redis": {
-      "status": "ok",
-      "message": "Redis connection healthy"
-    }
-  }
-}
+# Redis
+REDIS_URL=redis://localhost:6379
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+# Security
+JWT_SECRET=your-super-secret-jwt-key
+API_KEY=your-api-key
+
+# CORS
+CORS_ORIGIN=*
+
+# Feature flags
+ENABLE_METRICS=false
+ENABLE_HEALTH_CHECK=true
+ENABLE_SWAGGER=true
 ```
 
-## Architecture
+## Authentication
 
-### Services
+The template uses Bearer token authentication. Include the token in the Authorization header:
 
-The template follows a service-oriented architecture:
-
-- **AppService** - Main application orchestrator
-- **HealthService** - Health monitoring and reporting
-- **DataService** - Data management and caching
-
-### Error Handling
-
-Custom error classes are provided in `src/utils/errors.ts`:
-
-```typescript
-import { ValidationError, NotFoundError } from '@/utils/errors'
-
-throw new ValidationError('Invalid input')
-throw new NotFoundError('Resource not found')
+```http
+Authorization: Bearer your-access-token
 ```
 
-### Logging
+Public endpoints that don't require authentication:
+- `/health`
+- `/docs`
+- `/auth/*`
+- `/`
 
-Structured logging with different levels:
-
-```typescript
-import { Logger } from '@/utils/logger'
-
-const logger = new Logger('MyService')
-logger.error('Error message', error)
-logger.warn('Warning message')
-logger.info('Info message')
-logger.debug('Debug message')
-```
-
-### Path Aliases
+## Path Aliases
 
 The template supports TypeScript path aliases for cleaner imports:
 
@@ -202,22 +244,25 @@ import { Logger } from '../../../utils/logger'
 import { Logger } from '@/utils/logger'
 ```
 
-The `@/` alias points to the `src/` directory. This works in:
-- Development mode (`npm run dev`)
-- Production builds (`npm run build`)
-- Tests (`npm test`)
-- Type checking (`npm run type-check`)
+The `@/` alias points to the `src/` directory.
 
-### Helper Functions
+## Database (Optional)
 
-Common utility functions in `src/utils/helpers.ts`:
+The template includes Prisma ORM setup for PostgreSQL:
 
-- `sleep(ms)` - Delay execution
-- `retry(fn, maxRetries)` - Retry with exponential backoff
-- `deepClone(obj)` - Deep clone objects
-- `isEmpty(value)` - Check for empty values
-- `randomString(length)` - Generate random strings
-- `chunk(array, size)` - Split arrays into chunks
+1. Configure `DATABASE_URL` in `.env`
+2. Modify `prisma/schema.prisma` for your needs
+3. Generate Prisma client: `npm run prisma:generate`
+4. Run migrations: `npm run prisma:migrate`
+5. Open Prisma Studio: `npm run prisma:studio`
+
+## Redis (Optional)
+
+Redis support is included for caching and session management:
+
+1. Configure Redis connection in `.env`
+2. The server will automatically detect and use Redis if available
+3. Falls back gracefully if Redis is unavailable
 
 ## Testing
 
@@ -234,19 +279,33 @@ npm run test:watch
 npm run test:coverage
 ```
 
-Test files should be placed next to the source files with `.test.ts` or `.spec.ts` extension.
+Test files should be placed next to source files with `.test.ts` or `.spec.ts` extension.
 
-## Git Hooks
+## Error Handling
 
-Pre-commit hooks automatically run:
-1. Linting check
-2. Format check
-3. Type checking
-4. Tests
+Custom error classes are provided:
 
-To bypass hooks (not recommended):
-```bash
-git commit --no-verify
+```typescript
+import { AppError, ValidationError, NotFoundError } from '@/utils/errors'
+
+// Throw custom errors
+throw new ValidationError('Invalid input')
+throw new NotFoundError('Resource not found')
+throw new AppError('Custom error', 500)
+```
+
+## Logging
+
+Structured logging with different levels:
+
+```typescript
+import { Logger } from '@/utils/logger'
+
+const logger = new Logger('MyService')
+logger.error('Error message', error)
+logger.warn('Warning message')
+logger.info('Info message')
+logger.debug('Debug message')
 ```
 
 ## Deployment
@@ -274,23 +333,49 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Copy package files
 COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install dependencies
 RUN npm ci --only=production
+RUN npm run prisma:generate
 
+# Copy built application
 COPY dist ./dist
-COPY .env.example .env
 
+# Expose port
 EXPOSE 3000
 
+# Start server
 CMD ["npm", "start"]
 ```
 
 Build and run:
 ```bash
 npm run build
-docker build -t ts-service .
-docker run -p 3000:3000 --env-file .env ts-service
+docker build -t fastify-service .
+docker run -p 3000:3000 --env-file .env fastify-service
 ```
+
+## Performance Tips
+
+1. **Connection Pooling**: Use connection pooling for database
+2. **Caching**: Implement Redis caching for frequently accessed data
+3. **Compression**: Enable compression for responses
+4. **Rate Limiting**: Implement rate limiting for API endpoints
+5. **Monitoring**: Use APM tools for production monitoring
+
+## Security Best Practices
+
+1. Always use HTTPS in production
+2. Keep dependencies updated
+3. Use strong JWT secrets
+4. Implement rate limiting
+5. Validate all inputs
+6. Sanitize user data
+7. Use CORS appropriately
+8. Enable security headers
 
 ## Contributing
 
