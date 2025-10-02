@@ -22,7 +22,13 @@
     "precommit": "npm run lint:check && npm run format:check && npm run type-check && npm run test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "docker:up": "docker compose -f docker-compose.dev.yml up -d",
+    "docker:down": "docker compose -f docker-compose.dev.yml down",
+    "docker:build": "docker compose -f docker-compose.dev.yml build",
+    "docker:logs": "docker compose -f docker-compose.dev.yml logs -f",
+    "docker:restart": "docker compose -f docker-compose.dev.yml restart",
+    "docker:clean": "docker compose -f docker-compose.dev.yml down -v"
   },
   "keywords": [
     "typescript",
