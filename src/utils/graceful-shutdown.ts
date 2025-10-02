@@ -27,7 +27,7 @@ export async function gracefulShutdown(signal: string, context: ShutdownContext)
     // 2. Close all services and resources via DI container
     if (context.container) {
       logger.info('Disposing DI container and all services...')
-      
+
       // Manually disconnect Prisma before disposing container
       try {
         const prisma = context.container.cradle.prisma
@@ -39,7 +39,7 @@ export async function gracefulShutdown(signal: string, context: ShutdownContext)
       } catch (error) {
         logger.warn('Failed to disconnect Prisma:', error)
       }
-      
+
       await context.container.dispose()
       logger.info('✅ DI container disposed')
     }
