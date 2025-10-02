@@ -1,6 +1,5 @@
 /**
  * Pagination metadata
- * FIXED: No more raw arrays - always include pagination info
  */
 export interface PaginationMetadata {
   currentPage: number
@@ -57,7 +56,10 @@ export function createPaginatedResponse<T>(
 /**
  * Calculate skip and take for database queries
  */
-export function getPaginationParams(page: number = 1, limit: number = 10): { skip: number; take: number } {
+export function getPaginationParams(
+  page: number = 1,
+  limit: number = 10
+): { skip: number; take: number } {
   // Ensure positive values
   const safePage = Math.max(1, page)
   const safeLimit = Math.max(1, Math.min(100, limit)) // Max 100 items per page
@@ -76,14 +78,25 @@ export interface PaginationQuery {
   limit?: number
 }
 
-export function parsePaginationQuery(query: Record<string, unknown>): { page: number; limit: number } {
-  const page = typeof query.page === 'number' ? query.page : typeof query.page === 'string' ? parseInt(query.page, 10) : 1
+export function parsePaginationQuery(query: Record<string, unknown>): {
+  page: number
+  limit: number
+} {
+  const page =
+    typeof query.page === 'number'
+      ? query.page
+      : typeof query.page === 'string'
+        ? parseInt(query.page, 10)
+        : 1
   const limit =
-    typeof query.limit === 'number' ? query.limit : typeof query.limit === 'string' ? parseInt(query.limit, 10) : 10
+    typeof query.limit === 'number'
+      ? query.limit
+      : typeof query.limit === 'string'
+        ? parseInt(query.limit, 10)
+        : 10
 
   return {
     page: Math.max(1, page),
     limit: Math.max(1, Math.min(100, limit)),
   }
 }
-

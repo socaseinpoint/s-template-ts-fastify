@@ -1,8 +1,7 @@
 import { z } from 'zod'
 
 /**
- * Password validation with proper security requirements
- * FIXED: Password validation at schema level, not in service
+ * Password validation with security requirements
  */
 const passwordSchema = z
   .string()
@@ -70,4 +69,3 @@ export function validateSchema<T>(schema: z.ZodSchema<T>) {
     return schema.parse(data)
   }
 }
-

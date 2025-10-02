@@ -18,13 +18,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
   const authService = fastify.diContainer.cradle.authService
 
   /**
-   * Login endpoint
-   * FIXED: Stricter rate limiting per IP to prevent brute force
+   * Login endpoint with rate limiting
    */
   fastify.post(
     '/login',
     {
-      // FIXED: Zod validation at route level
       preHandler: [validateBody(loginDtoSchema)],
       schema: {
         description: 'User login with email and password',
@@ -67,13 +65,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
   )
 
   /**
-   * Register endpoint
-   * FIXED: Rate limiting to prevent spam registrations
+   * Register endpoint with spam prevention
    */
   fastify.post(
     '/register',
     {
-      // FIXED: Zod validation with strong password requirements
       preHandler: [validateBody(registerDtoSchema)],
       schema: {
         description: 'User registration with strong password requirements',

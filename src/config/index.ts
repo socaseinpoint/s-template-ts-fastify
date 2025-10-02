@@ -19,11 +19,11 @@ const envSchema = z.object({
   // API Keys
   API_KEY: z.string().optional(),
 
-  // JWT Configuration - MUST be strong in production
+  // JWT Configuration - MUST be strong (64+ chars) in production
   JWT_SECRET: z
     .string()
-    .min(32, 'JWT_SECRET must be at least 32 characters in production')
-    .default('your-secret-key-change-this-in-production-min-32-chars'),
+    .min(64, 'JWT_SECRET must be at least 64 characters for security')
+    .default('your-secret-key-change-this-in-production-min-64-chars-for-security'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
@@ -65,12 +65,17 @@ function validateEnv() {
           '❌ SECURITY: JWT_SECRET must be changed in production! Never use default secrets.'
         )
       }
-      if (parsed.JWT_SECRET.length < 32) {
-        throw new Error('❌ SECURITY: JWT_SECRET must be at least 32 characters in production')
+      if (parsed.JWT_SECRET.length < 64) {
+        throw new Error('❌ SECURITY: JWT_SECRET must be at least 64 characters in production')
       }
       if (!parsed.DATABASE_URL) {
         throw new Error('❌ DATABASE_URL is required in production')
       }
+    }
+
+    // Warn about weak secrets in non-production
+    if (parsed.NODE_ENV !== 'production' && parsed.JWT_SECRET.length < 64) {
+      console.warn('⚠️  WARNING: JWT_SECRET should be at least 64 characters even in development')
     }
 
     return parsed
@@ -86,16 +91,21 @@ function validateEnv() {
   }
 }
 
-// Lazy initialization - validates when first accessed
+// Simple singleton pattern - validates once on first access
 let configInstance: z.infer<typeof envSchema> | null = null
 
-export const Config = new Proxy({} as z.infer<typeof envSchema>, {
-  get(target, prop) {
-    if (!configInstance) {
-      configInstance = validateEnv()
-    }
-    return configInstance[prop as keyof typeof configInstance]
-  },
-})
+/**
+ * Get validated configuration
+ * Validates environment variables on first call, then returns cached instance
+ */
+export function getConfig(): z.infer<typeof envSchema> {
+  if (!configInstance) {
+    configInstance = validateEnv()
+  }
+  return configInstance
+}
+
+// Export Config for backward compatibility (uses getter internally)
+export const Config = getConfig()
 
 export type ConfigType = z.infer<typeof envSchema>

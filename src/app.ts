@@ -5,6 +5,7 @@ import fastifyRateLimit from '@fastify/rate-limit'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import fastifyFormbody from '@fastify/formbody'
+import fastifyRedis from '@fastify/redis'
 import { swaggerConfig, swaggerUiConfig } from '@/config/swagger'
 import { registerRoutes } from '@/routes'
 import { Logger } from '@/utils/logger'
@@ -52,25 +53,50 @@ export async function createApp(): Promise<AppContext> {
           },
   })
 
-  // Create DI container
-  const container = await createDIContainer()
-
-  // Decorate fastify with container for access in plugins/routes
-  fastify.decorate('diContainer', container)
-
   // Register centralized error handler
   fastify.setErrorHandler(errorHandler)
 
   // Register request context plugin (correlation ID, tracing)
   await fastify.register(requestContextPlugin)
 
-  // Security: Helmet with proper CSP
+  // Register Redis (optional - graceful fallback to in-memory)
+  let redisClient
+  if (Config.REDIS_URL || Config.REDIS_HOST) {
+    try {
+      await fastify.register(fastifyRedis, {
+        url: Config.REDIS_URL,
+        host: Config.REDIS_HOST,
+        port: Config.REDIS_PORT,
+        password: Config.REDIS_PASSWORD,
+        // Graceful connection handling
+        lazyConnect: false,
+        enableReadyCheck: true,
+        maxRetriesPerRequest: 3,
+      })
+      redisClient = fastify.redis
+      logger.info('✅ Redis connected successfully')
+    } catch (error) {
+      logger.warn('⚠️  Redis connection failed, falling back to in-memory storage', error)
+      redisClient = undefined
+    }
+  } else {
+    logger.info('ℹ️  Redis not configured, using in-memory token storage')
+  }
+
+  // Create DI container with Redis if available
+  const container = await createDIContainer({ redis: redisClient })
+
+  // Decorate fastify with container for access in plugins/routes
+  fastify.decorate('diContainer', container)
+
+  // Security: Helmet with strict CSP (no unsafe-inline in production)
   await fastify.register(fastifyHelmet, {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        // Only allow unsafe-inline in development for Swagger UI
+        styleSrc: Config.NODE_ENV === 'development' ? ["'self'", "'unsafe-inline'"] : ["'self'"],
+        scriptSrc: Config.NODE_ENV === 'development' ? ["'self'", "'unsafe-inline'"] : ["'self'"],
         imgSrc: ["'self'", 'data:', 'https:'],
       },
     },
@@ -99,15 +125,14 @@ export async function createApp(): Promise<AppContext> {
     await fastify.register(fastifySwaggerUi, swaggerUiConfig)
   }
 
-  // FIXED: Proper CORS configuration
-  // Never allow credentials with wildcard origin
+  // Proper CORS configuration - never allow credentials with wildcard origin
   const corsOrigin = getCorsOrigin()
   await fastify.register(fastifyCors, {
     origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID', 'X-Request-ID'],
     exposedHeaders: ['X-Correlation-ID', 'X-Request-ID'],
-    credentials: corsOrigin !== '*', // Only allow credentials if origin is specific
+    credentials: corsOrigin !== '*',
   })
 
   // Health check endpoint with live DB check
@@ -194,8 +219,7 @@ export async function createApp(): Promise<AppContext> {
 }
 
 /**
- * Get CORS origin configuration
- * FIXED: No more wildcard + credentials vulnerability
+ * Get CORS origin configuration - secure by default
  */
 function getCorsOrigin(): string | string[] | boolean {
   if (Config.NODE_ENV === 'production') {
@@ -203,11 +227,9 @@ function getCorsOrigin(): string | string[] | boolean {
       logger.warn('⚠️  CORS wildcard (*) in production - credentials disabled for security')
       return '*'
     }
-    // Parse multiple origins
     return Config.CORS_ORIGIN.split(',').map(o => o.trim())
   }
 
-  // Development mode - allow all but still log warning
   logger.info('Development mode - CORS set to wildcard (*)')
   return '*'
 }

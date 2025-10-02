@@ -1,11 +1,13 @@
 import { createContainer, asValue, asClass, InjectionMode, Lifetime, AwilixContainer } from 'awilix'
 import { PrismaClient } from '@prisma/client'
 import { Logger } from '@/utils/logger'
+import type { FastifyRedis } from '@fastify/redis'
 
 // Repositories
 import { UserRepository, IUserRepository } from '@/repositories/user.repository'
 import { ItemRepository, IItemRepository } from '@/repositories/item.repository'
 import { TokenRepository, ITokenRepository } from '@/repositories/token.repository'
+import { RedisTokenRepository } from '@/repositories/redis-token.repository'
 
 // Services
 import { AuthService } from '@/services/auth.service'
@@ -17,6 +19,7 @@ const logger = new Logger('Container')
 export interface ICradle {
   // Infrastructure
   prisma: PrismaClient
+  redis?: FastifyRedis
 
   // Repositories
   userRepository: IUserRepository
@@ -31,12 +34,13 @@ export interface ICradle {
 
 export interface ContainerOptions {
   prisma?: PrismaClient
+  redis?: FastifyRedis
   skipConnect?: boolean
 }
 
 /**
  * Create and configure the DI container
- * Simplified version without over-engineering
+ * SCOPED lifetime for stateless request handling
  */
 export async function createDIContainer(
   options: ContainerOptions = {}
@@ -83,21 +87,34 @@ export async function createDIContainer(
     prisma: asValue(prismaClient),
   })
 
-  // Register repositories
+  // Register Redis if available
+  if (options.redis) {
+    container.register({
+      redis: asValue(options.redis),
+    })
+    logger.info('✅ Redis available for distributed token storage')
+  }
+
+  // Register repositories with SCOPED lifetime for clean request isolation
   container.register({
-    userRepository: asClass(UserRepository, { lifetime: Lifetime.SINGLETON }),
-    itemRepository: asClass(ItemRepository, { lifetime: Lifetime.SINGLETON }),
-    tokenRepository: asClass(TokenRepository, { lifetime: Lifetime.SINGLETON }),
+    userRepository: asClass(UserRepository, { lifetime: Lifetime.SCOPED }),
+    itemRepository: asClass(ItemRepository, { lifetime: Lifetime.SCOPED }),
+    // Choose TokenRepository implementation based on Redis availability
+    tokenRepository: options.redis
+      ? asClass(RedisTokenRepository, { lifetime: Lifetime.SCOPED })
+      : asClass(TokenRepository, { lifetime: Lifetime.SCOPED }),
   })
 
-  // Register business services
+  // Register business services with SCOPED lifetime
   container.register({
-    authService: asClass(AuthService, { lifetime: Lifetime.SINGLETON }),
-    userService: asClass(UserService, { lifetime: Lifetime.SINGLETON }),
-    itemService: asClass(ItemService, { lifetime: Lifetime.SINGLETON }),
+    authService: asClass(AuthService, { lifetime: Lifetime.SCOPED }),
+    userService: asClass(UserService, { lifetime: Lifetime.SCOPED }),
+    itemService: asClass(ItemService, { lifetime: Lifetime.SCOPED }),
   })
 
-  logger.info('✅ DI Container initialized')
+  logger.info(
+    `✅ DI Container initialized (Token storage: ${options.redis ? 'Redis' : 'In-Memory'})`
+  )
 
   return container
 }

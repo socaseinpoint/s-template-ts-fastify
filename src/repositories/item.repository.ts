@@ -1,5 +1,5 @@
 import { PrismaClient, Item, ItemCategory, ItemStatus } from '@prisma/client'
-import { Logger } from '@/utils/logger'
+import { BaseRepository } from './base.repository'
 
 export interface IItemRepository {
   findById(id: string): Promise<Item | null>
@@ -44,11 +44,16 @@ export interface FindManyItemsParams {
   }
 }
 
-export class ItemRepository implements IItemRepository {
-  private logger: Logger
+export class ItemRepository
+  extends BaseRepository<Item, CreateItemDto, UpdateItemDto>
+  implements IItemRepository
+{
+  constructor(prisma: PrismaClient) {
+    super(prisma, 'Item')
+  }
 
-  constructor(private prisma: PrismaClient) {
-    this.logger = new Logger('ItemRepository')
+  protected getModel() {
+    return this.prisma.item
   }
 
   async findById(id: string): Promise<Item | null> {
@@ -80,29 +85,6 @@ export class ItemRepository implements IItemRepository {
       })
     } catch (error) {
       this.logger.error(`Error creating item: ${data.name}`, error)
-      throw error
-    }
-  }
-
-  async update(id: string, data: UpdateItemDto): Promise<Item> {
-    try {
-      return await this.prisma.item.update({
-        where: { id },
-        data,
-      })
-    } catch (error) {
-      this.logger.error(`Error updating item: ${id}`, error)
-      throw error
-    }
-  }
-
-  async delete(id: string): Promise<void> {
-    try {
-      await this.prisma.item.delete({
-        where: { id },
-      })
-    } catch (error) {
-      this.logger.error(`Error deleting item: ${id}`, error)
       throw error
     }
   }

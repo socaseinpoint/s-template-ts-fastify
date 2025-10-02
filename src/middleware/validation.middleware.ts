@@ -4,7 +4,6 @@ import { ValidationError } from '@/utils/errors'
 
 /**
  * Zod validation middleware for Fastify
- * FIXED: Proper input validation at the route level
  */
 export function validateBody<T>(schema: z.ZodSchema<T>) {
   return async (request: FastifyRequest, reply: FastifyReply) => {

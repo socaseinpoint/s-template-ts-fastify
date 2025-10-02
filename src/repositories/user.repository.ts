@@ -1,5 +1,5 @@
 import { PrismaClient, User, Role } from '@prisma/client'
-import { Logger } from '@/utils/logger'
+import { BaseRepository } from './base.repository'
 
 export interface IUserRepository {
   findByEmail(email: string): Promise<User | null>
@@ -37,11 +37,16 @@ export interface FindManyUsersParams {
   }
 }
 
-export class UserRepository implements IUserRepository {
-  private logger: Logger
+export class UserRepository
+  extends BaseRepository<User, CreateUserDto, UpdateUserDto>
+  implements IUserRepository
+{
+  constructor(prisma: PrismaClient) {
+    super(prisma, 'User')
+  }
 
-  constructor(private prisma: PrismaClient) {
-    this.logger = new Logger('UserRepository')
+  protected getModel() {
+    return this.prisma.user
   }
 
   async findByEmail(email: string): Promise<User | null> {
@@ -51,57 +56,6 @@ export class UserRepository implements IUserRepository {
       })
     } catch (error) {
       this.logger.error(`Error finding user by email: ${email}`, error)
-      throw error
-    }
-  }
-
-  async findById(id: string): Promise<User | null> {
-    try {
-      return await this.prisma.user.findUnique({
-        where: { id },
-      })
-    } catch (error) {
-      this.logger.error(`Error finding user by id: ${id}`, error)
-      throw error
-    }
-  }
-
-  async create(data: CreateUserDto): Promise<User> {
-    try {
-      return await this.prisma.user.create({
-        data: {
-          email: data.email,
-          password: data.password,
-          name: data.name,
-          phone: data.phone,
-          role: data.role || Role.USER,
-        },
-      })
-    } catch (error) {
-      this.logger.error(`Error creating user: ${data.email}`, error)
-      throw error
-    }
-  }
-
-  async update(id: string, data: UpdateUserDto): Promise<User> {
-    try {
-      return await this.prisma.user.update({
-        where: { id },
-        data,
-      })
-    } catch (error) {
-      this.logger.error(`Error updating user: ${id}`, error)
-      throw error
-    }
-  }
-
-  async delete(id: string): Promise<void> {
-    try {
-      await this.prisma.user.delete({
-        where: { id },
-      })
-    } catch (error) {
-      this.logger.error(`Error deleting user: ${id}`, error)
       throw error
     }
   }

@@ -301,11 +301,24 @@ The template includes Prisma ORM setup for PostgreSQL:
 
 ## Redis (Optional)
 
-Redis support is included for caching and session management:
+Redis support is included for **distributed token storage**:
 
-1. Configure Redis connection in `.env`
-2. The server will automatically detect and use Redis if available
-3. Falls back gracefully if Redis is unavailable
+1. Configure Redis connection in `.env`:
+   ```env
+   REDIS_URL=redis://localhost:6379
+   # OR
+   REDIS_HOST=127.0.0.1
+   REDIS_PORT=6379
+   REDIS_PASSWORD=your-password
+   ```
+2. The server will automatically:
+   - Use Redis for JWT token storage if available (recommended for production)
+   - Fall back gracefully to in-memory storage if Redis is unavailable
+3. Redis features:
+   - Refresh token management with automatic TTL
+   - Token blacklisting for logout
+   - Multi-device session support
+   - Distributed system ready
 
 ## Testing
 
@@ -425,7 +438,7 @@ npm run docker:test:down
 
 ### Test Coverage Goals
 
-- **Unit Tests**: ≥ 70% coverage (enforced in CI)
+- **Unit Tests**: ≥ 80% coverage (enforced in CI)
 - **E2E Tests**: Critical user flows covered
 
 View coverage report:
@@ -530,7 +543,7 @@ await wait(1000)
 
 ### Test Coverage Goals
 
-- **Unit Tests**: ≥ 70% coverage (configured in `vitest.config.ts`)
+- **Unit Tests**: ≥ 80% coverage (configured in `vitest.config.ts`)
 - **Integration Tests**: All API endpoints covered
 - **E2E Tests**: Critical user flows covered
 

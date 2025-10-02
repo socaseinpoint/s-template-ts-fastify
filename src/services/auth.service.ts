@@ -131,9 +131,6 @@ export class AuthService {
   async login(dto: LoginDto): Promise<AuthResponse> {
     this.logger.info(`Login attempt for email: ${dto.email}`)
 
-    // NOTE: Password length validation moved to Zod schema (see next todo)
-    // This is business logic, service assumes data is already validated
-
     // Fetch user from database
     const user = await this.userRepository.findByEmail(dto.email)
 
@@ -156,7 +153,7 @@ export class AuthService {
       role: userRole,
     })
 
-    // FIXED: Store refresh token with proper TTL
+    // Store refresh token with TTL
     const refreshTTL = this.parseExpirationToSeconds(Config.JWT_REFRESH_EXPIRES_IN)
     await this.tokenRepository.addToSet(`refresh:${user.id}`, tokens.refreshToken, refreshTTL)
 
@@ -181,8 +178,6 @@ export class AuthService {
    */
   async register(dto: RegisterDto): Promise<AuthResponse> {
     this.logger.info(`Registration attempt for email: ${dto.email}`)
-
-    // NOTE: Password validation moved to Zod schema (see next todo)
 
     // Check if user already exists
     const existingUser = await this.userRepository.findByEmail(dto.email)
@@ -210,7 +205,7 @@ export class AuthService {
       role: userRole,
     })
 
-    // FIXED: Store refresh token with proper TTL
+    // Store refresh token with TTL
     const refreshTTL = this.parseExpirationToSeconds(Config.JWT_REFRESH_EXPIRES_IN)
     await this.tokenRepository.addToSet(`refresh:${newUser.id}`, tokens.refreshToken, refreshTTL)
 
@@ -253,7 +248,7 @@ export class AuthService {
       role: payload.role,
     })
 
-    // FIXED: Rotate tokens properly with TTL
+    // Rotate tokens with TTL
     const refreshTTL = this.parseExpirationToSeconds(Config.JWT_REFRESH_EXPIRES_IN)
 
     // Remove old refresh token and add new one
