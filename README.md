@@ -4,7 +4,7 @@ A production-ready TypeScript service template with ESLint, Prettier, Husky, and
 
 ## Features
 
-- 🚀 **TypeScript** - Type-safe development
+- 🚀 **TypeScript** - Type-safe development with path aliases
 - 📝 **ESLint & Prettier** - Code quality and formatting
 - 🪝 **Husky** - Git hooks for pre-commit checks
 - 🧪 **Vitest** - Fast unit testing and coverage
@@ -13,6 +13,7 @@ A production-ready TypeScript service template with ESLint, Prettier, Husky, and
 - 🔧 **Environment Config** - Dotenv configuration
 - 📖 **Logging** - Structured logging with levels
 - 🔄 **Graceful Shutdown** - Proper cleanup on termination
+- 🎯 **Path Aliases** - Use `@/` for clean imports from `src/`
 
 ## Project Structure
 
@@ -188,6 +189,24 @@ logger.warn('Warning message')
 logger.info('Info message')
 logger.debug('Debug message')
 ```
+
+### Path Aliases
+
+The template supports TypeScript path aliases for cleaner imports:
+
+```typescript
+// Instead of:
+import { Logger } from '../../../utils/logger'
+
+// You can use:
+import { Logger } from '@/utils/logger'
+```
+
+The `@/` alias points to the `src/` directory. This works in:
+- Development mode (`npm run dev`)
+- Production builds (`npm run build`)
+- Tests (`npm test`)
+- Type checking (`npm run type-check`)
 
 ### Helper Functions
 
