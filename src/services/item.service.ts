@@ -1,19 +1,7 @@
 import { Logger } from '@/utils/logger'
-
-interface Item {
-  id: string
-  name: string
-  description?: string
-  category: 'electronics' | 'clothing' | 'food' | 'books' | 'other'
-  price: number
-  quantity: number
-  status: 'available' | 'out_of_stock' | 'discontinued'
-  tags?: string[]
-  metadata?: Record<string, any>
-  userId: string
-  createdAt: string
-  updatedAt: string
-}
+import { AppError } from '@/utils/errors'
+import prisma from '@/services/prisma.service'
+import { ItemCategory, ItemStatus } from '@prisma/client'
 
 interface GetItemsParams {
   page?: number
@@ -22,15 +10,15 @@ interface GetItemsParams {
   sortOrder?: 'asc' | 'desc'
   search?: string
   category?: string
+  status?: string
 }
 
 interface CreateItemDto {
   name: string
   description?: string
-  category: Item['category']
+  category: string
   price: number
   quantity?: number
-  status?: Item['status']
   tags?: string[]
   metadata?: Record<string, any>
   userId: string
@@ -39,72 +27,23 @@ interface CreateItemDto {
 interface UpdateItemDto {
   name?: string
   description?: string
-  category?: Item['category']
+  category?: string
   price?: number
   quantity?: number
-  status?: Item['status']
+  status?: string
   tags?: string[]
   metadata?: Record<string, any>
 }
 
 export class ItemService {
   private logger: Logger
-  private items: Map<string, Item>
 
   constructor() {
     this.logger = new Logger('ItemService')
-    this.items = new Map()
-    this.initMockData()
-  }
-
-  private initMockData(): void {
-    const mockItems: Item[] = [
-      {
-        id: '1',
-        name: 'Laptop Pro',
-        description: 'High-performance laptop for professionals',
-        category: 'electronics',
-        price: 1299.99,
-        quantity: 10,
-        status: 'available',
-        tags: ['computer', 'professional', 'portable'],
-        userId: '1',
-        createdAt: new Date('2024-01-01').toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        name: 'Winter Jacket',
-        description: 'Warm jacket for cold weather',
-        category: 'clothing',
-        price: 89.99,
-        quantity: 25,
-        status: 'available',
-        tags: ['winter', 'warm', 'outdoor'],
-        userId: '2',
-        createdAt: new Date('2024-01-15').toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '3',
-        name: 'TypeScript Handbook',
-        description: 'Complete guide to TypeScript programming',
-        category: 'books',
-        price: 39.99,
-        quantity: 0,
-        status: 'out_of_stock',
-        tags: ['programming', 'typescript', 'education'],
-        userId: '1',
-        createdAt: new Date('2024-02-01').toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ]
-
-    mockItems.forEach(item => this.items.set(item.id, item))
   }
 
   async getAllItems(params: GetItemsParams): Promise<{
-    items: Item[]
+    items: any[]
     pagination: {
       total: number
       page: number
@@ -119,46 +58,64 @@ export class ItemService {
       sortOrder = 'desc',
       search,
       category,
+      status,
     } = params
 
     this.logger.debug(`Fetching items with params: ${JSON.stringify(params)}`)
 
-    let items = Array.from(this.items.values())
+    // Build where clause
+    const where: any = {}
 
-    // Apply filters
     if (search) {
-      const searchLower = search.toLowerCase()
-      items = items.filter(
-        item =>
-          item.name.toLowerCase().includes(searchLower) ||
-          item.description?.toLowerCase().includes(searchLower)
-      )
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ]
     }
 
     if (category) {
-      items = items.filter(item => item.category === category)
+      where.category = category.toUpperCase() as ItemCategory
     }
 
-    // Apply sorting
-    items.sort((a, b) => {
-      const aVal = a[sortBy as keyof Item] as any
-      const bVal = b[sortBy as keyof Item] as any
+    if (status) {
+      where.status = status.toUpperCase() as ItemStatus
+    }
 
-      if (sortOrder === 'asc') {
-        return aVal > bVal ? 1 : -1
-      } else {
-        return aVal < bVal ? 1 : -1
-      }
+    // Get total count
+    const total = await prisma.item.count({ where })
+
+    // Get paginated items
+    const items = await prisma.item.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: {
+        [sortBy]: sortOrder,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        price: true,
+        quantity: true,
+        status: true,
+        tags: true,
+        metadata: true,
+        userId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     })
 
-    // Apply pagination
-    const total = items.length
     const totalPages = Math.ceil(total / limit)
-    const start = (page - 1) * limit
-    const paginatedItems = items.slice(start, start + limit)
 
     return {
-      items: paginatedItems,
+      items: items.map(item => ({
+        ...item,
+        category: item.category.toLowerCase(),
+        status: item.status.toLowerCase(),
+      })),
       pagination: {
         total,
         page,
@@ -168,59 +125,122 @@ export class ItemService {
     }
   }
 
-  async getItemById(id: string): Promise<Item | null> {
+  async getItemById(id: string): Promise<any | null> {
     this.logger.debug(`Fetching item with id: ${id}`)
-    return this.items.get(id) || null
-  }
 
-  async createItem(dto: CreateItemDto): Promise<Item> {
-    const item: Item = {
-      ...dto,
-      id: Math.random().toString(36).substring(7),
-      status: dto.status || 'available',
-      quantity: dto.quantity || 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
+    const item = await prisma.item.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        price: true,
+        quantity: true,
+        status: true,
+        tags: true,
+        metadata: true,
+        userId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
 
-    this.items.set(item.id, item)
-    this.logger.info(`Created item with id: ${item.id}`)
-    return item
-  }
-
-  async updateItem(id: string, dto: UpdateItemDto): Promise<Item | null> {
-    this.logger.info(`Updating item with id: ${id}`)
-
-    const item = this.items.get(id)
     if (!item) {
       return null
     }
 
-    const updatedItem: Item = {
+    return {
       ...item,
-      ...dto,
-      updatedAt: new Date().toISOString(),
+      category: item.category.toLowerCase(),
+      status: item.status.toLowerCase(),
     }
+  }
 
-    this.items.set(id, updatedItem)
-    return updatedItem
+  async createItem(dto: CreateItemDto): Promise<any> {
+    this.logger.info(`Creating new item: ${dto.name}`)
+
+    const item = await prisma.item.create({
+      data: {
+        name: dto.name,
+        description: dto.description,
+        category: dto.category.toUpperCase() as ItemCategory,
+        price: dto.price,
+        quantity: dto.quantity || 0,
+        tags: dto.tags || [],
+        metadata: dto.metadata,
+        userId: dto.userId,
+      },
+    })
+
+    this.logger.info(`Item created with id: ${item.id}`)
+
+    return {
+      ...item,
+      category: item.category.toLowerCase(),
+      status: item.status.toLowerCase(),
+    }
+  }
+
+  async updateItem(id: string, dto: UpdateItemDto): Promise<any | null> {
+    this.logger.info(`Updating item with id: ${id}`)
+
+    try {
+      const updateData: any = { ...dto }
+      
+      if (dto.category) {
+        updateData.category = dto.category.toUpperCase() as ItemCategory
+      }
+      
+      if (dto.status) {
+        updateData.status = dto.status.toUpperCase() as ItemStatus
+      }
+
+      const item = await prisma.item.update({
+        where: { id },
+        data: updateData,
+      })
+
+      return {
+        ...item,
+        category: item.category.toLowerCase(),
+        status: item.status.toLowerCase(),
+      }
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        return null
+      }
+      throw error
+    }
   }
 
   async deleteItem(id: string): Promise<boolean> {
     this.logger.info(`Deleting item with id: ${id}`)
-    return this.items.delete(id)
+
+    try {
+      await prisma.item.delete({
+        where: { id },
+      })
+      return true
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        return false
+      }
+      throw error
+    }
   }
 
-  async batchDelete(ids: string[]): Promise<number> {
+  async batchDelete(ids: string[]): Promise<{ deletedCount: number }> {
     this.logger.info(`Batch deleting ${ids.length} items`)
 
-    let deletedCount = 0
-    for (const id of ids) {
-      if (this.items.delete(id)) {
-        deletedCount++
-      }
-    }
+    const result = await prisma.item.deleteMany({
+      where: {
+        id: { in: ids },
+      },
+    })
 
-    return deletedCount
+    this.logger.info(`Deleted ${result.count} items`)
+
+    return { deletedCount: result.count }
   }
 }

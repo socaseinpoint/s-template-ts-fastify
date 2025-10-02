@@ -34,6 +34,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "prisma:seed": "tsx prisma/seed.ts",
     "docker:up": "docker compose -f docker-compose.dev.yml up -d",
     "docker:down": "docker compose -f docker-compose.dev.yml down",
     "docker:build": "docker compose -f docker-compose.dev.yml build",
