@@ -74,7 +74,8 @@
     "tsx": "^4.0.0",
     "typescript": "^5.2.2",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "vitest-mock-extended": "^3.1.0"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
