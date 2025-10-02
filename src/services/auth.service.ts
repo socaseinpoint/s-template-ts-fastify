@@ -20,7 +20,7 @@ interface AuthResponse {
     id: string
     email: string
     name: string
-    role: string
+    role: 'admin' | 'moderator' | 'user'
   }
 }
 
@@ -34,16 +34,42 @@ export class AuthService {
   async login(dto: LoginDto): Promise<AuthResponse> {
     this.logger.info(`Login attempt for email: ${dto.email}`)
 
-    // Mock authentication logic
-    if (dto.email === 'admin@example.com' && dto.password === 'password123') {
+    // Mock authentication logic with different user roles
+    const users = [
+      {
+        email: 'admin@example.com',
+        password: 'password123',
+        id: '1',
+        name: 'Admin User',
+        role: 'admin' as const,
+      },
+      {
+        email: 'moderator@example.com',
+        password: 'password123',
+        id: '2',
+        name: 'Moderator User',
+        role: 'moderator' as const,
+      },
+      {
+        email: 'user@example.com',
+        password: 'password123',
+        id: '3',
+        name: 'Regular User',
+        role: 'user' as const,
+      },
+    ]
+
+    const user = users.find(u => u.email === dto.email && u.password === dto.password)
+
+    if (user) {
       return {
         accessToken: `access_${Date.now()}_${Math.random().toString(36)}`,
         refreshToken: `refresh_${Date.now()}_${Math.random().toString(36)}`,
         user: {
-          id: '1',
-          email: dto.email,
-          name: 'Admin User',
-          role: 'admin',
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
         },
       }
     }

@@ -3,13 +3,13 @@ export const loginSchema = {
     type: 'object',
     required: ['email', 'password'],
     properties: {
-      email: { 
-        type: 'string', 
+      email: {
+        type: 'string',
         format: 'email',
         description: 'User email address',
       },
-      password: { 
-        type: 'string', 
+      password: {
+        type: 'string',
         minLength: 6,
         description: 'User password',
       },
@@ -40,23 +40,23 @@ export const registerSchema = {
     type: 'object',
     required: ['email', 'password', 'name'],
     properties: {
-      email: { 
-        type: 'string', 
+      email: {
+        type: 'string',
         format: 'email',
         description: 'User email address',
       },
-      password: { 
-        type: 'string', 
+      password: {
+        type: 'string',
         minLength: 6,
         description: 'User password',
       },
-      name: { 
-        type: 'string', 
+      name: {
+        type: 'string',
         minLength: 2,
         maxLength: 100,
         description: 'User full name',
       },
-      phone: { 
+      phone: {
         type: 'string',
         pattern: '^[+]?[0-9]{10,15}$',
         description: 'User phone number',
@@ -88,7 +88,7 @@ export const refreshSchema = {
     type: 'object',
     required: ['refreshToken'],
     properties: {
-      refreshToken: { 
+      refreshToken: {
         type: 'string',
         description: 'JWT refresh token',
       },

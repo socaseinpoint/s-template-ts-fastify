@@ -218,19 +218,62 @@ ENABLE_HEALTH_CHECK=true
 ENABLE_SWAGGER=true
 ```
 
-## Authentication
+## Authentication & Authorization
 
-The template uses Bearer token authentication. Include the token in the Authorization header:
+The template uses Bearer token authentication with role-based access control (RBAC).
+
+### User Roles
+
+- **admin** - Full access to all resources
+- **moderator** - Can create and update items, view users
+- **user** - Can view items and own profile
+
+### Test Credentials
+
+```
+Admin:
+  Email: admin@example.com
+  Password: password123
+
+Moderator:
+  Email: moderator@example.com
+  Password: password123
+
+Regular User:
+  Email: user@example.com
+  Password: password123
+```
+
+### Authorization Header
+
+Include the token in the Authorization header:
 
 ```http
 Authorization: Bearer your-access-token
 ```
 
-Public endpoints that don't require authentication:
+### Public Endpoints
+
+Endpoints that don't require authentication:
 - `/health`
 - `/docs`
 - `/auth/*`
 - `/`
+
+### Protected Endpoints by Role
+
+| Endpoint | Method | Required Role |
+|----------|--------|--------------|
+| `/items` | GET | Any authenticated user |
+| `/items/:id` | GET | Any authenticated user |
+| `/items` | POST | Moderator or Admin |
+| `/items/:id` | PUT | Moderator or Admin |
+| `/items/:id` | DELETE | Admin only |
+| `/items/batch-delete` | POST | Admin only |
+| `/users` | GET | Admin only |
+| `/users/:id` | GET | Own profile or Admin |
+| `/users/:id` | PUT | Own profile or Admin |
+| `/users/:id` | DELETE | Admin only |
 
 ## Path Aliases
 

@@ -1,16 +1,18 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { ItemService } from '@/services/item.service'
 import { itemSchema, createItemSchema, updateItemSchema } from '@/schemas/item.schemas'
+import { requireAuth, requireModerator, requireAdmin } from '@/middleware/auth.middleware'
 
 export default async function itemRoutes(fastify: FastifyInstance) {
   const itemService = new ItemService()
 
-  // Get all items
+  // Get all items - accessible by all authenticated users
   fastify.get(
     '/',
     {
+      preHandler: requireAuth,
       schema: {
-        description: 'Get all items with pagination and filtering',
+        description: 'Get all items with pagination and filtering (requires authentication)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
         querystring: {
@@ -75,12 +77,13 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     }
   )
 
-  // Get item by ID
+  // Get item by ID - accessible by all authenticated users
   fastify.get(
     '/:id',
     {
+      preHandler: requireAuth,
       schema: {
-        description: 'Get item by ID',
+        description: 'Get item by ID (requires authentication)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
         params: {
@@ -121,12 +124,13 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     }
   )
 
-  // Create item
+  // Create item - accessible by moderators and admins
   fastify.post(
     '/',
     {
+      preHandler: requireModerator,
       schema: {
-        description: 'Create a new item',
+        description: 'Create a new item (requires moderator or admin role)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
         body: createItemSchema,
@@ -142,7 +146,21 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest<{ Body: typeof createItemSchema }>, reply: FastifyReply) => {
+    async (
+      request: FastifyRequest<{
+        Body: {
+          name: string
+          description?: string
+          category: 'electronics' | 'clothing' | 'food' | 'books' | 'other'
+          price: number
+          quantity?: number
+          status?: 'available' | 'out_of_stock' | 'discontinued'
+          tags?: string[]
+          metadata?: Record<string, any>
+        }
+      }>,
+      reply: FastifyReply
+    ) => {
       try {
         const user = (request as any).user
         const item = await itemService.createItem({
@@ -159,12 +177,13 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     }
   )
 
-  // Update item
+  // Update item - accessible by moderators and admins
   fastify.put(
     '/:id',
     {
+      preHandler: requireModerator,
       schema: {
-        description: 'Update an existing item',
+        description: 'Update an existing item (requires moderator or admin role)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
         params: {
@@ -190,7 +209,16 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     async (
       request: FastifyRequest<{
         Params: { id: string }
-        Body: typeof updateItemSchema
+        Body: {
+          name?: string
+          description?: string
+          category?: 'electronics' | 'clothing' | 'food' | 'books' | 'other'
+          price?: number
+          quantity?: number
+          status?: 'available' | 'out_of_stock' | 'discontinued'
+          tags?: string[]
+          metadata?: Record<string, any>
+        }
       }>,
       reply: FastifyReply
     ) => {
@@ -212,12 +240,13 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     }
   )
 
-  // Delete item
+  // Delete item - accessible by admins only
   fastify.delete(
     '/:id',
     {
+      preHandler: requireAdmin,
       schema: {
-        description: 'Delete an item',
+        description: 'Delete an item (requires admin role)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
         params: {
@@ -263,12 +292,13 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     }
   )
 
-  // Batch delete items
+  // Batch delete items - accessible by admins only
   fastify.post(
     '/batch-delete',
     {
+      preHandler: requireAdmin,
       schema: {
-        description: 'Delete multiple items',
+        description: 'Delete multiple items (requires admin role)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
         body: {

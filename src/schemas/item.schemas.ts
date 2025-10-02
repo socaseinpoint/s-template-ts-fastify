@@ -4,19 +4,19 @@ export const itemSchema = {
     id: { type: 'string' },
     name: { type: 'string' },
     description: { type: 'string' },
-    category: { 
+    category: {
       type: 'string',
       enum: ['electronics', 'clothing', 'food', 'books', 'other'],
     },
-    price: { 
+    price: {
       type: 'number',
       minimum: 0,
     },
-    quantity: { 
+    quantity: {
       type: 'number',
       minimum: 0,
     },
-    status: { 
+    status: {
       type: 'string',
       enum: ['available', 'out_of_stock', 'discontinued'],
     },
@@ -38,29 +38,29 @@ export const createItemSchema = {
   type: 'object',
   required: ['name', 'category', 'price'],
   properties: {
-    name: { 
+    name: {
       type: 'string',
       minLength: 1,
       maxLength: 200,
     },
-    description: { 
+    description: {
       type: 'string',
       maxLength: 1000,
     },
-    category: { 
+    category: {
       type: 'string',
       enum: ['electronics', 'clothing', 'food', 'books', 'other'],
     },
-    price: { 
+    price: {
       type: 'number',
       minimum: 0,
     },
-    quantity: { 
+    quantity: {
       type: 'number',
       minimum: 0,
       default: 0,
     },
-    status: { 
+    status: {
       type: 'string',
       enum: ['available', 'out_of_stock', 'discontinued'],
       default: 'available',
@@ -80,28 +80,28 @@ export const createItemSchema = {
 export const updateItemSchema = {
   type: 'object',
   properties: {
-    name: { 
+    name: {
       type: 'string',
       minLength: 1,
       maxLength: 200,
     },
-    description: { 
+    description: {
       type: 'string',
       maxLength: 1000,
     },
-    category: { 
+    category: {
       type: 'string',
       enum: ['electronics', 'clothing', 'food', 'books', 'other'],
     },
-    price: { 
+    price: {
       type: 'number',
       minimum: 0,
     },
-    quantity: { 
+    quantity: {
       type: 'number',
       minimum: 0,
     },
-    status: { 
+    status: {
       type: 'string',
       enum: ['available', 'out_of_stock', 'discontinued'],
     },

@@ -5,7 +5,7 @@ export const userSchema = {
     email: { type: 'string', format: 'email' },
     name: { type: 'string' },
     phone: { type: 'string' },
-    role: { 
+    role: {
       type: 'string',
       enum: ['admin', 'user', 'moderator'],
     },
@@ -18,16 +18,16 @@ export const userSchema = {
 export const updateUserSchema = {
   type: 'object',
   properties: {
-    name: { 
-      type: 'string', 
+    name: {
+      type: 'string',
       minLength: 2,
       maxLength: 100,
     },
-    phone: { 
+    phone: {
       type: 'string',
       pattern: '^[+]?[0-9]{10,15}$',
     },
-    role: { 
+    role: {
       type: 'string',
       enum: ['admin', 'user', 'moderator'],
     },
@@ -39,24 +39,24 @@ export const createUserSchema = {
   type: 'object',
   required: ['email', 'name', 'password'],
   properties: {
-    email: { 
-      type: 'string', 
+    email: {
+      type: 'string',
       format: 'email',
     },
-    name: { 
-      type: 'string', 
+    name: {
+      type: 'string',
       minLength: 2,
       maxLength: 100,
     },
-    password: { 
-      type: 'string', 
+    password: {
+      type: 'string',
       minLength: 6,
     },
-    phone: { 
+    phone: {
       type: 'string',
       pattern: '^[+]?[0-9]{10,15}$',
     },
-    role: { 
+    role: {
       type: 'string',
       enum: ['admin', 'user', 'moderator'],
       default: 'user',

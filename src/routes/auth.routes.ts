@@ -25,7 +25,10 @@ export default async function authRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest<{ Body: typeof loginSchema.body }>, reply: FastifyReply) => {
+    async (
+      request: FastifyRequest<{ Body: { email: string; password: string } }>,
+      reply: FastifyReply
+    ) => {
       try {
         const result = await authService.login(request.body)
         return reply.send(result)
@@ -58,7 +61,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest<{ Body: typeof registerSchema.body }>, reply: FastifyReply) => {
+    async (
+      request: FastifyRequest<{
+        Body: { email: string; password: string; name: string; phone?: string }
+      }>,
+      reply: FastifyReply
+    ) => {
       try {
         const result = await authService.register(request.body)
         return reply.code(201).send(result)
@@ -91,7 +99,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest<{ Body: typeof refreshSchema.body }>, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Body: { refreshToken: string } }>, reply: FastifyReply) => {
       try {
         const result = await authService.refreshToken(request.body.refreshToken)
         return reply.send(result)
