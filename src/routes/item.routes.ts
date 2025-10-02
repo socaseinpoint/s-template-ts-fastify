@@ -1,14 +1,29 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { itemSchema, createItemSchema, updateItemSchema } from '@/schemas/item.schemas'
+import { FastifyInstance } from 'fastify'
+import {
+  itemSchema,
+  createItemDtoSchema,
+  updateItemDtoSchema,
+  getItemsQuerySchema,
+  getItemsResponseSchema,
+  itemIdParamsSchema,
+  batchDeleteItemsDtoSchema,
+  batchDeleteResponseSchema,
+  deleteItemResponseSchema,
+  errorResponseSchema,
+} from '@/schemas/item.schemas'
 import { UserRole } from '@/constants'
 import { authenticateMiddleware, authorizeRoles } from '@/middleware/authenticate.middleware'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+
+// Error response schemas
+const notFoundErrorSchema = errorResponseSchema
 
 export default async function itemRoutes(fastify: FastifyInstance) {
   // Get itemService from DI container via fastify decorator
   const itemService = fastify.diContainer.cradle.itemService
 
   // Get all items - accessible by all authenticated users
-  fastify.get(
+  fastify.withTypeProvider<ZodTypeProvider>().get(
     '/',
     {
       onRequest: [authenticateMiddleware],
@@ -16,56 +31,14 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         description: 'Get all items with pagination and filtering (requires authentication)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
-        querystring: {
-          type: 'object',
-          properties: {
-            page: { type: 'number', default: 1, minimum: 1 },
-            limit: { type: 'number', default: 10, minimum: 1, maximum: 100 },
-            sortBy: {
-              type: 'string',
-              enum: ['name', 'createdAt', 'updatedAt'],
-              default: 'createdAt',
-            },
-            sortOrder: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
-            search: { type: 'string' },
-            category: { type: 'string' },
-          },
-        },
+        querystring: getItemsQuerySchema,
         response: {
-          200: {
-            type: 'object',
-            properties: {
-              items: {
-                type: 'array',
-                items: itemSchema,
-              },
-              pagination: {
-                type: 'object',
-                properties: {
-                  total: { type: 'number' },
-                  page: { type: 'number' },
-                  limit: { type: 'number' },
-                  totalPages: { type: 'number' },
-                },
-              },
-            },
-          },
+          200: getItemsResponseSchema,
+          500: errorResponseSchema,
         },
       },
     },
-    async (
-      request: FastifyRequest<{
-        Querystring: {
-          page?: number
-          limit?: number
-          sortBy?: string
-          sortOrder?: 'asc' | 'desc'
-          search?: string
-          category?: string
-        }
-      }>,
-      reply: FastifyReply
-    ) => {
+    async (request, reply) => {
       try {
         const result = await itemService.getAllItems(request.query)
         return reply.send(result)
@@ -79,7 +52,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   )
 
   // Get item by ID - accessible by all authenticated users
-  fastify.get(
+  fastify.withTypeProvider<ZodTypeProvider>().get(
     '/:id',
     {
       onRequest: [authenticateMiddleware],
@@ -87,26 +60,15 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         description: 'Get item by ID (requires authentication)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
-        params: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-          },
-          required: ['id'],
-        },
+        params: itemIdParamsSchema,
         response: {
           200: itemSchema,
-          404: {
-            type: 'object',
-            properties: {
-              error: { type: 'string' },
-              code: { type: 'number' },
-            },
-          },
+          404: notFoundErrorSchema,
+          500: errorResponseSchema,
         },
       },
     },
-    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    async (request, reply) => {
       try {
         const item = await itemService.getItemById(request.params.id)
         if (!item) {
@@ -126,7 +88,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   )
 
   // Create item - accessible by moderators and admins
-  fastify.post(
+  fastify.withTypeProvider<ZodTypeProvider>().post(
     '/',
     {
       onRequest: [authorizeRoles(UserRole.MODERATOR, UserRole.ADMIN)],
@@ -134,34 +96,14 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         description: 'Create a new item (requires moderator or admin role)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
-        body: createItemSchema,
+        body: createItemDtoSchema,
         response: {
           201: itemSchema,
-          400: {
-            type: 'object',
-            properties: {
-              error: { type: 'string' },
-              code: { type: 'number' },
-            },
-          },
+          400: errorResponseSchema,
         },
       },
     },
-    async (
-      request: FastifyRequest<{
-        Body: {
-          name: string
-          description?: string
-          category: 'electronics' | 'clothing' | 'food' | 'books' | 'other'
-          price: number
-          quantity?: number
-          status?: 'available' | 'out_of_stock' | 'discontinued'
-          tags?: string[]
-          metadata?: Record<string, any>
-        }
-      }>,
-      reply: FastifyReply
-    ) => {
+    async (request, reply) => {
       try {
         const user = (request as any).user
         const item = await itemService.createItem({
@@ -179,7 +121,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   )
 
   // Update item - accessible by moderators and admins
-  fastify.put(
+  fastify.withTypeProvider<ZodTypeProvider>().put(
     '/:id',
     {
       onRequest: [authorizeRoles(UserRole.MODERATOR, UserRole.ADMIN)],
@@ -187,42 +129,16 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         description: 'Update an existing item (requires moderator or admin role)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
-        params: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-          },
-          required: ['id'],
-        },
-        body: updateItemSchema,
+        params: itemIdParamsSchema,
+        body: updateItemDtoSchema,
         response: {
           200: itemSchema,
-          404: {
-            type: 'object',
-            properties: {
-              error: { type: 'string' },
-              code: { type: 'number' },
-            },
-          },
+          404: notFoundErrorSchema,
+          500: errorResponseSchema,
         },
       },
     },
-    async (
-      request: FastifyRequest<{
-        Params: { id: string }
-        Body: {
-          name?: string
-          description?: string
-          category?: 'electronics' | 'clothing' | 'food' | 'books' | 'other'
-          price?: number
-          quantity?: number
-          status?: 'available' | 'out_of_stock' | 'discontinued'
-          tags?: string[]
-          metadata?: Record<string, any>
-        }
-      }>,
-      reply: FastifyReply
-    ) => {
+    async (request, reply) => {
       try {
         const item = await itemService.updateItem(request.params.id, request.body)
         if (!item) {
@@ -242,7 +158,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   )
 
   // Delete item - accessible by admins only
-  fastify.delete(
+  fastify.withTypeProvider<ZodTypeProvider>().delete(
     '/:id',
     {
       onRequest: [authorizeRoles(UserRole.ADMIN)],
@@ -250,31 +166,15 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         description: 'Delete an item (requires admin role)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
-        params: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-          },
-          required: ['id'],
-        },
+        params: itemIdParamsSchema,
         response: {
-          200: {
-            type: 'object',
-            properties: {
-              message: { type: 'string' },
-            },
-          },
-          404: {
-            type: 'object',
-            properties: {
-              error: { type: 'string' },
-              code: { type: 'number' },
-            },
-          },
+          200: deleteItemResponseSchema,
+          404: notFoundErrorSchema,
+          500: errorResponseSchema,
         },
       },
     },
-    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    async (request, reply) => {
       try {
         const deleted = await itemService.deleteItem(request.params.id)
         if (!deleted) {
@@ -294,7 +194,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   )
 
   // Batch delete items - accessible by admins only
-  fastify.post(
+  fastify.withTypeProvider<ZodTypeProvider>().post(
     '/batch-delete',
     {
       onRequest: [authorizeRoles(UserRole.ADMIN)],
@@ -302,34 +202,19 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         description: 'Delete multiple items (requires admin role)',
         tags: ['Items'],
         security: [{ Bearer: [] }],
-        body: {
-          type: 'object',
-          properties: {
-            ids: {
-              type: 'array',
-              items: { type: 'string' },
-              minItems: 1,
-            },
-          },
-          required: ['ids'],
-        },
+        body: batchDeleteItemsDtoSchema,
         response: {
-          200: {
-            type: 'object',
-            properties: {
-              message: { type: 'string' },
-              deleted: { type: 'number' },
-            },
-          },
+          200: batchDeleteResponseSchema,
+          500: errorResponseSchema,
         },
       },
     },
-    async (request: FastifyRequest<{ Body: { ids: string[] } }>, reply: FastifyReply) => {
+    async (request, reply) => {
       try {
-        const deletedCount = await itemService.batchDelete(request.body.ids)
+        const result = await itemService.batchDelete(request.body.ids)
         return reply.send({
-          message: `Successfully deleted ${deletedCount} items`,
-          deleted: deletedCount,
+          message: `Successfully deleted ${result.deletedCount} items`,
+          deleted: result.deletedCount,
         })
       } catch (error) {
         return reply.code(500).send({

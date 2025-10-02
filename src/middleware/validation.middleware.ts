@@ -6,13 +6,13 @@ import { ValidationError } from '@/utils/errors'
  * Zod validation middleware for Fastify
  */
 export function validateBody<T>(schema: z.ZodSchema<T>) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  return async (request: FastifyRequest, _reply: FastifyReply) => {
     try {
       // Validate and transform the body
       request.body = schema.parse(request.body)
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const errors = error.errors.map(err => ({
+        const errors = error.issues.map((err: z.ZodIssue) => ({
           field: err.path.join('.'),
           message: err.message,
         }))
@@ -28,12 +28,12 @@ export function validateBody<T>(schema: z.ZodSchema<T>) {
  * Validate query parameters
  */
 export function validateQuery<T>(schema: z.ZodSchema<T>) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  return async (request: FastifyRequest, _reply: FastifyReply) => {
     try {
       request.query = schema.parse(request.query)
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const errors = error.errors.map(err => ({
+        const errors = error.issues.map((err: z.ZodIssue) => ({
           field: err.path.join('.'),
           message: err.message,
         }))
@@ -49,12 +49,12 @@ export function validateQuery<T>(schema: z.ZodSchema<T>) {
  * Validate route parameters
  */
 export function validateParams<T>(schema: z.ZodSchema<T>) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  return async (request: FastifyRequest, _reply: FastifyReply) => {
     try {
       request.params = schema.parse(request.params)
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const errors = error.errors.map(err => ({
+        const errors = error.issues.map((err: z.ZodIssue) => ({
           field: err.path.join('.'),
           message: err.message,
         }))

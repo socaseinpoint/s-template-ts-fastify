@@ -1,65 +1,120 @@
-export const userSchema = {
-  type: 'object',
-  properties: {
-    id: { type: 'string' },
-    email: { type: 'string', format: 'email' },
-    name: { type: 'string' },
-    phone: { type: 'string' },
-    role: {
-      type: 'string',
-      enum: ['admin', 'user', 'moderator'],
-    },
-    isActive: { type: 'boolean' },
-    createdAt: { type: 'string', format: 'date-time' },
-    updatedAt: { type: 'string', format: 'date-time' },
-  },
-} as const
+import { z } from 'zod'
 
-export const updateUserSchema = {
-  type: 'object',
-  properties: {
-    name: {
-      type: 'string',
-      minLength: 2,
-      maxLength: 100,
-    },
-    phone: {
-      type: 'string',
-      pattern: '^[+]?[0-9]{10,15}$',
-    },
-    role: {
-      type: 'string',
-      enum: ['admin', 'user', 'moderator'],
-    },
-    isActive: { type: 'boolean' },
-  },
-} as const
+/**
+ * User role enum
+ */
+export const userRoleSchema = z.enum(['admin', 'user', 'moderator'])
+export type UserRole = z.infer<typeof userRoleSchema>
 
-export const createUserSchema = {
-  type: 'object',
-  required: ['email', 'name', 'password'],
-  properties: {
-    email: {
-      type: 'string',
-      format: 'email',
-    },
-    name: {
-      type: 'string',
-      minLength: 2,
-      maxLength: 100,
-    },
-    password: {
-      type: 'string',
-      minLength: 6,
-    },
-    phone: {
-      type: 'string',
-      pattern: '^[+]?[0-9]{10,15}$',
-    },
-    role: {
-      type: 'string',
-      enum: ['admin', 'user', 'moderator'],
-      default: 'user',
-    },
-  },
-} as const
+/**
+ * User schema (response)
+ */
+export const userResponseSchema = z.object({
+  id: z.string(),
+  email: z.string().email(),
+  name: z.string(),
+  phone: z.string().optional(),
+  role: userRoleSchema,
+  isActive: z.boolean(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
+})
+
+export type UserResponse = z.infer<typeof userResponseSchema>
+
+/**
+ * Create user DTO schema
+ */
+export const createUserDtoSchema = z.object({
+  email: z.string().email('Invalid email format').toLowerCase(),
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100, 'Name too long'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  phone: z
+    .string()
+    .regex(/^[+]?[0-9]{10,15}$/, 'Invalid phone number format')
+    .optional(),
+  role: userRoleSchema.default('user'),
+})
+
+export type CreateUserDto = z.infer<typeof createUserDtoSchema>
+
+/**
+ * Update user DTO schema
+ * Note: role accepts lowercase but service converts to uppercase
+ */
+export const updateUserDtoSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name too long')
+    .optional(),
+  phone: z
+    .string()
+    .regex(/^[+]?[0-9]{10,15}$/, 'Invalid phone number format')
+    .optional(),
+  role: z.string().optional(), // accepts any string, service will validate and convert
+  isActive: z.boolean().optional(),
+})
+
+export type UpdateUserDto = z.infer<typeof updateUserDtoSchema>
+
+/**
+ * Get users query parameters schema
+ */
+export const getUsersQuerySchema = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(10),
+  search: z.string().optional(),
+})
+
+export type GetUsersQuery = z.infer<typeof getUsersQuerySchema>
+
+/**
+ * Get users response schema
+ */
+export const getUsersResponseSchema = z.object({
+  users: z.array(userResponseSchema),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+})
+
+export type GetUsersResponse = z.infer<typeof getUsersResponseSchema>
+
+/**
+ * User ID params schema
+ */
+export const userIdParamsSchema = z.object({
+  id: z.string(),
+})
+
+export type UserIdParams = z.infer<typeof userIdParamsSchema>
+
+/**
+ * Delete user response schema
+ */
+export const deleteUserResponseSchema = z.object({
+  message: z.string(),
+})
+
+export type DeleteUserResponse = z.infer<typeof deleteUserResponseSchema>
+
+/**
+ * Error response schema (403)
+ */
+export const forbiddenErrorSchema = z.object({
+  error: z.string(),
+  code: z.number(),
+})
+
+export type ForbiddenError = z.infer<typeof forbiddenErrorSchema>
+
+/**
+ * Error response schema (404)
+ */
+export const notFoundErrorSchema = z.object({
+  error: z.string(),
+  code: z.number(),
+})
+
+export type NotFoundError = z.infer<typeof notFoundErrorSchema>

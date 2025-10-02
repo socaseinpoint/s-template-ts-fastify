@@ -1,8 +1,10 @@
 import { SwaggerOptions } from '@fastify/swagger'
 import { FastifySwaggerUiOptions } from '@fastify/swagger-ui'
+import { jsonSchemaTransform } from 'fastify-type-provider-zod'
 import { Config } from '@/config'
 
 export const swaggerConfig: SwaggerOptions = {
+  transform: jsonSchemaTransform,
   openapi: {
     info: {
       title: 'Fastify Service Template API',
@@ -15,9 +17,10 @@ export const swaggerConfig: SwaggerOptions = {
     },
     servers: [
       {
-        url: Config.NODE_ENV === 'production' 
-          ? 'https://api.example.com' 
-          : `http://localhost:${Config.PORT}`,
+        url:
+          Config.NODE_ENV === 'production'
+            ? 'https://api.example.com'
+            : `http://localhost:${Config.PORT}`,
         description: Config.NODE_ENV === 'production' ? 'Production' : 'Development',
       },
     ],
@@ -50,5 +53,5 @@ export const swaggerUiConfig: FastifySwaggerUiOptions = {
     filter: true,
   },
   staticCSP: false,
-  transformStaticCSP: (header) => header,
+  transformStaticCSP: header => header,
 }

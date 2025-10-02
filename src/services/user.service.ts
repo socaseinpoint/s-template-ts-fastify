@@ -11,7 +11,7 @@ interface GetUsersParams {
 interface UpdateUserDto {
   name?: string
   phone?: string
-  role?: Role
+  role?: string // Accepts lowercase, converts to uppercase internally
   isActive?: boolean
 }
 

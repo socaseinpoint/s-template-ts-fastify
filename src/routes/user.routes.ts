@@ -1,14 +1,24 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { userSchema, updateUserSchema } from '@/schemas/user.schemas'
+import { FastifyInstance } from 'fastify'
+import {
+  userResponseSchema,
+  updateUserDtoSchema,
+  getUsersQuerySchema,
+  getUsersResponseSchema,
+  userIdParamsSchema,
+  deleteUserResponseSchema,
+  forbiddenErrorSchema,
+  notFoundErrorSchema,
+} from '@/schemas/user.schemas'
 import { UserRole } from '@/constants'
 import { authenticateMiddleware, authorizeRoles } from '@/middleware/authenticate.middleware'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
 
 export default async function userRoutes(fastify: FastifyInstance) {
   // Get userService from DI container via fastify decorator
   const userService = fastify.diContainer.cradle.userService
 
   // Get all users - admin only
-  fastify.get(
+  fastify.withTypeProvider<ZodTypeProvider>().get(
     '/',
     {
       onRequest: [authorizeRoles(UserRole.ADMIN)],
@@ -16,43 +26,20 @@ export default async function userRoutes(fastify: FastifyInstance) {
         description: 'Get all users (requires admin role)',
         tags: ['Users'],
         security: [{ Bearer: [] }],
-        querystring: {
-          type: 'object',
-          properties: {
-            page: { type: 'number', default: 1 },
-            limit: { type: 'number', default: 10 },
-            search: { type: 'string' },
-          },
-        },
+        querystring: getUsersQuerySchema,
         response: {
-          200: {
-            type: 'object',
-            properties: {
-              users: {
-                type: 'array',
-                items: userSchema,
-              },
-              total: { type: 'number' },
-              page: { type: 'number' },
-              limit: { type: 'number' },
-            },
-          },
+          200: getUsersResponseSchema,
         },
       },
     },
     async (request, reply) => {
-      const {
-        page = 1,
-        limit = 10,
-        search,
-      } = request.query as { page?: number; limit?: number; search?: string }
-      const result = await userService.getAllUsers({ page, limit, search })
+      const result = await userService.getAllUsers(request.query)
       return reply.send(result)
     }
   )
 
   // Get user by ID - authenticated users can get their own info, admins can get any
-  fastify.get(
+  fastify.withTypeProvider<ZodTypeProvider>().get(
     '/:id',
     {
       onRequest: [authenticateMiddleware],
@@ -60,28 +47,17 @@ export default async function userRoutes(fastify: FastifyInstance) {
         description: 'Get user by ID (requires authentication)',
         tags: ['Users'],
         security: [{ Bearer: [] }],
-        params: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-          },
-          required: ['id'],
-        },
+        params: userIdParamsSchema,
         response: {
-          200: userSchema,
-          404: {
-            type: 'object',
-            properties: {
-              error: { type: 'string' },
-              code: { type: 'number' },
-            },
-          },
+          200: userResponseSchema,
+          403: forbiddenErrorSchema,
+          404: notFoundErrorSchema,
         },
       },
     },
     async (request, reply) => {
-      const currentUser = request.user!
-      const { id } = request.params as { id: string }
+      const currentUser = request.user
+      const { id } = request.params
 
       // Users can only get their own info unless they're admin
       if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
@@ -97,7 +73,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   )
 
   // Update user - users can update themselves, admins can update anyone
-  fastify.put(
+  fastify.withTypeProvider<ZodTypeProvider>().put(
     '/:id',
     {
       onRequest: [authenticateMiddleware],
@@ -105,35 +81,19 @@ export default async function userRoutes(fastify: FastifyInstance) {
         description: 'Update user (requires authentication)',
         tags: ['Users'],
         security: [{ Bearer: [] }],
-        params: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-          },
-          required: ['id'],
-        },
-        body: updateUserSchema,
+        params: userIdParamsSchema,
+        body: updateUserDtoSchema,
         response: {
-          200: userSchema,
-          404: {
-            type: 'object',
-            properties: {
-              error: { type: 'string' },
-              code: { type: 'number' },
-            },
-          },
+          200: userResponseSchema,
+          403: forbiddenErrorSchema,
+          404: notFoundErrorSchema,
         },
       },
     },
     async (request, reply) => {
-      const currentUser = request.user!
-      const { id } = request.params as { id: string }
-      const body = request.body as {
-        name?: string
-        phone?: string
-        role?: string
-        isActive?: boolean
-      }
+      const currentUser = request.user
+      const { id } = request.params
+      const body = request.body
 
       // Users can only update themselves, admins can update anyone
       if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
@@ -157,7 +117,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   )
 
   // Delete user - admin only
-  fastify.delete(
+  fastify.withTypeProvider<ZodTypeProvider>().delete(
     '/:id',
     {
       onRequest: [authorizeRoles(UserRole.ADMIN)],
@@ -165,32 +125,15 @@ export default async function userRoutes(fastify: FastifyInstance) {
         description: 'Delete user (requires admin role)',
         tags: ['Users'],
         security: [{ Bearer: [] }],
-        params: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-          },
-          required: ['id'],
-        },
+        params: userIdParamsSchema,
         response: {
-          200: {
-            type: 'object',
-            properties: {
-              message: { type: 'string' },
-            },
-          },
-          404: {
-            type: 'object',
-            properties: {
-              error: { type: 'string' },
-              code: { type: 'number' },
-            },
-          },
+          200: deleteUserResponseSchema,
+          404: notFoundErrorSchema,
         },
       },
     },
     async (request, reply) => {
-      const { id } = request.params as { id: string }
+      const { id } = request.params
       const deleted = await userService.deleteUser(id)
       if (!deleted) {
         return reply.code(404).send({

@@ -6,6 +6,11 @@ import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import fastifyFormbody from '@fastify/formbody'
 import fastifyRedis from '@fastify/redis'
+import {
+  serializerCompiler,
+  validatorCompiler,
+  type ZodTypeProvider,
+} from 'fastify-type-provider-zod'
 import { swaggerConfig, swaggerUiConfig } from '@/config/swagger'
 import { registerRoutes } from '@/routes'
 import { Logger } from '@/utils/logger'
@@ -15,6 +20,7 @@ import { requestContextPlugin } from '@/plugins/request-context.plugin'
 import { createDIContainer, DIContainer } from '@/container'
 import { errorHandler } from '@/middleware/error-handler.middleware'
 import { RATE_LIMITS, ROUTES, ServiceStatus } from '@/constants'
+import { healthResponseSchema, welcomeResponseSchema } from '@/schemas/system.schemas'
 
 const logger = new Logger('App')
 
@@ -51,7 +57,11 @@ export async function createApp(): Promise<AppContext> {
         : {
             level: Config.LOG_LEVEL,
           },
-  })
+  }).withTypeProvider<ZodTypeProvider>()
+
+  // Set Zod as validator and serializer
+  fastify.setValidatorCompiler(validatorCompiler)
+  fastify.setSerializerCompiler(serializerCompiler)
 
   // Register centralized error handler
   fastify.setErrorHandler(errorHandler)
@@ -136,36 +146,28 @@ export async function createApp(): Promise<AppContext> {
   })
 
   // Health check endpoint with live DB check
-  fastify.get(
+  fastify.withTypeProvider<ZodTypeProvider>().get(
     ROUTES.HEALTH,
     {
       schema: {
         description: 'Health check endpoint with database status',
         tags: ['System'],
         response: {
-          200: {
-            type: 'object',
-            properties: {
-              status: { type: 'string', enum: ['healthy', 'unhealthy'] },
-              timestamp: { type: 'string' },
-              uptime: { type: 'number' },
-              database: { type: 'string' },
-            },
-          },
+          200: healthResponseSchema,
         },
       },
     },
     async (_, reply) => {
       // Perform real-time database health check
       let dbStatus = ServiceStatus.UNAVAILABLE
-      let overallStatus = ServiceStatus.UNAVAILABLE
+      let overallStatus: 'healthy' | 'unhealthy' = 'unhealthy'
 
       try {
         const prisma = container.cradle.prisma
         if (prisma && typeof prisma.$queryRaw === 'function') {
           await prisma.$queryRaw`SELECT 1`
           dbStatus = ServiceStatus.AVAILABLE
-          overallStatus = ServiceStatus.AVAILABLE
+          overallStatus = 'healthy'
         }
       } catch (error) {
         logger.error('Health check failed:', error)
@@ -181,22 +183,14 @@ export async function createApp(): Promise<AppContext> {
   )
 
   // Root endpoint
-  fastify.get(
+  fastify.withTypeProvider<ZodTypeProvider>().get(
     ROUTES.ROOT,
     {
       schema: {
         description: 'Welcome endpoint',
         tags: ['System'],
         response: {
-          200: {
-            type: 'object',
-            properties: {
-              message: { type: 'string' },
-              version: { type: 'string' },
-              docs: { type: 'string' },
-              environment: { type: 'string' },
-            },
-          },
+          200: welcomeResponseSchema,
         },
       },
     },

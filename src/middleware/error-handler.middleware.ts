@@ -77,7 +77,7 @@ export function errorHandler(
     return reply.code(400).send({
       error: 'Validation failed',
       code: 400,
-      details: error.errors.map(err => ({
+      details: error.issues.map((err: any) => ({
         path: err.path.join('.'),
         message: err.message,
       })),
