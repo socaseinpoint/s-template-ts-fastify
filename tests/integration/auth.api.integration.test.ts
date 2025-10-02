@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import axios, { AxiosInstance } from 'axios'
+import { testUsers } from '@tests/fixtures/users.fixture'
 
 describe('Auth API Integration Tests', () => {
   let api: AxiosInstance
@@ -73,18 +74,18 @@ describe('Auth API Integration Tests', () => {
   describe('POST /auth/login', () => {
     it('should login with valid credentials', async () => {
       const response = await api.post('/auth/login', {
-        email: 'admin@example.com',
-        password: 'Admin123!',
+        email: testUsers.admin.email,
+        password: testUsers.admin.password,
       })
 
       expect(response.status).toBe(200)
       expect(response.data).toHaveProperty('accessToken')
       expect(response.data).toHaveProperty('refreshToken')
       expect(response.data.user).toMatchObject({
-        id: '1',
-        email: 'admin@example.com',
-        name: 'Admin User',
-        role: 'admin',
+        id: testUsers.admin.id,
+        email: testUsers.admin.email,
+        name: testUsers.admin.name,
+        role: testUsers.admin.role,
       })
 
       // Store tokens for other tests
@@ -94,7 +95,7 @@ describe('Auth API Integration Tests', () => {
 
     it('should reject invalid credentials', async () => {
       const response = await api.post('/auth/login', {
-        email: 'admin@example.com',
+        email: testUsers.admin.email,
         password: 'WrongPassword',
       })
 
@@ -117,8 +118,8 @@ describe('Auth API Integration Tests', () => {
     beforeAll(async () => {
       // Get fresh tokens
       const response = await api.post('/auth/login', {
-        email: 'admin@example.com',
-        password: 'Admin123!',
+        email: testUsers.admin.email,
+        password: testUsers.admin.password,
       })
       refreshToken = response.data.refreshToken
     })
@@ -157,8 +158,8 @@ describe('Auth API Integration Tests', () => {
     beforeAll(async () => {
       // Get fresh access token
       const response = await api.post('/auth/login', {
-        email: 'admin@example.com',
-        password: 'Admin123!',
+        email: testUsers.admin.email,
+        password: testUsers.admin.password,
       })
       accessToken = response.data.accessToken
     })
@@ -208,8 +209,8 @@ describe('Auth API Integration Tests', () => {
   describe('Role-based Access', () => {
     it('should allow admin to access admin routes', async () => {
       const adminResponse = await api.post('/auth/login', {
-        email: 'admin@example.com',
-        password: 'Admin123!',
+        email: testUsers.admin.email,
+        password: testUsers.admin.password,
       })
       const adminToken = adminResponse.data.accessToken
 
@@ -224,8 +225,8 @@ describe('Auth API Integration Tests', () => {
 
     it('should deny regular user access to admin routes', async () => {
       const userResponse = await api.post('/auth/login', {
-        email: 'user@example.com',
-        password: 'User123!',
+        email: testUsers.user.email,
+        password: testUsers.user.password,
       })
       const userToken = userResponse.data.accessToken
 
@@ -244,8 +245,8 @@ describe('Auth API Integration Tests', () => {
     beforeAll(async () => {
       // Get fresh token
       const response = await api.post('/auth/login', {
-        email: 'admin@example.com',
-        password: 'Admin123!',
+        email: testUsers.admin.email,
+        password: testUsers.admin.password,
       })
       accessToken = response.data.accessToken
     })
@@ -273,3 +274,4 @@ describe('Auth API Integration Tests', () => {
     })
   })
 })
+

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import axios, { AxiosInstance } from 'axios'
+import { generateUniqueEmail, wait } from '@tests/helpers/test-utils'
 
 describe('Full Authentication Flow E2E Tests', () => {
   let api: AxiosInstance
@@ -7,9 +8,9 @@ describe('Full Authentication Flow E2E Tests', () => {
 
   // Test user data
   const testUser = {
-    email: `user_${Date.now()}@test.com`,
+    email: generateUniqueEmail('flowtest'),
     password: 'TestPassword123!',
-    name: 'Test User',
+    name: 'Flow Test User',
   }
 
   // Tokens storage
@@ -61,7 +62,7 @@ describe('Full Authentication Flow E2E Tests', () => {
 
     it('Step 3: Should refresh tokens', async () => {
       // Wait a bit to ensure new token is different
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await wait(1000)
 
       const response = await api.post('/auth/refresh', {
         refreshToken,
@@ -159,7 +160,7 @@ describe('Full Authentication Flow E2E Tests', () => {
 
       for (const test of weakPasswords) {
         const response = await api.post('/auth/register', {
-          email: `weak${Date.now()}@test.com`,
+          email: generateUniqueEmail('weak'),
           password: test.pass,
           name: 'Weak Password User',
         })
@@ -335,3 +336,4 @@ describe('Full Authentication Flow E2E Tests', () => {
     })
   })
 })
+

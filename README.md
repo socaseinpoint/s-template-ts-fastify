@@ -309,20 +309,229 @@ Redis support is included for caching and session management:
 
 ## Testing
 
-The template uses Vitest for testing:
+### Test Structure
 
-```bash
-# Run tests
-npm test
+The project uses a well-organized test structure with clear separation of concerns:
 
-# Watch mode for development
-npm run test:watch
-
-# Generate coverage report
-npm run test:coverage
+```
+tests/
+├── unit/           # Unit tests - testing individual functions/classes
+│   ├── services/   # Service layer tests
+│   ├── utils/      # Utility function tests
+│   ├── middleware/ # Middleware tests
+│   └── routes/     # Route handler tests
+├── integration/    # Integration tests - testing API endpoints
+│   └── *.integration.test.ts
+├── e2e/           # End-to-end tests - testing full user flows
+│   └── *.e2e.test.ts
+├── fixtures/      # Test data and mock data
+│   ├── users.fixture.ts
+│   └── items.fixture.ts
+├── mocks/         # Mock implementations
+│   ├── redis.mock.ts
+│   └── database.mock.ts
+├── helpers/       # Test utilities
+│   ├── test-server.ts   # Test server setup
+│   └── test-utils.ts    # Common test utilities
+└── setup/         # Setup and teardown
+    ├── setup.ts
+    └── teardown.ts
 ```
 
-Test files should be placed next to source files with `.test.ts` or `.spec.ts` extension.
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run by type
+npm run test:unit           # Only unit tests
+npm run test:integration    # Only integration tests
+npm run test:e2e           # Only E2E tests
+
+# Watch mode (auto-rerun on file changes)
+npm run test:watch          # All tests
+npm run test:unit:watch     # Only unit tests
+npm run test:integration:watch  # Only integration tests
+npm run test:e2e:watch      # Only E2E tests
+
+# Coverage reports
+npm run test:coverage       # Full coverage report
+npm run test:coverage:unit  # Unit tests coverage
+npm run test:coverage:integration  # Integration tests coverage
+npm run test:coverage:full  # Complete coverage report
+
+# Other useful commands
+npm run test:ui            # Open Vitest UI (interactive test runner)
+npm run test:changed       # Test only changed files
+npm run test:ci            # Run tests in CI mode with JSON reporter
+```
+
+### Test Types Explained
+
+**Unit Tests** (`tests/unit/`)
+- Test individual functions, classes, or modules in isolation
+- Use mocks for external dependencies (database, Redis, etc.)
+- Fast execution (milliseconds)
+- High code coverage focus
+- Example: Testing password validation logic, JWT token generation
+
+**Integration Tests** (`tests/integration/`)
+- Test API endpoints with real server instance
+- May use mocked database/services or test database
+- Test request/response handling, middleware, authentication
+- Medium execution speed (seconds)
+- Example: Testing login endpoint returns correct status codes and tokens
+
+**E2E Tests** (`tests/e2e/`)
+- Test complete user workflows across multiple endpoints
+- Run against real (or close to real) environment
+- Test the entire application stack
+- Slower execution (seconds to minutes)
+- Example: Register → Login → Access Protected Route → Update Profile → Logout
+
+### Writing Tests
+
+**Example Unit Test:**
+```typescript
+import { describe, it, expect } from 'vitest'
+import { PasswordUtils } from '@/utils/password'
+
+describe('PasswordUtils', () => {
+  it('should validate strong password', () => {
+    const result = PasswordUtils.validateStrength('Strong123!')
+    expect(result.valid).toBe(true)
+  })
+})
+```
+
+**Example Integration Test:**
+```typescript
+import { describe, it, expect, beforeAll } from 'vitest'
+import { getTestServer } from '@tests/helpers/test-server'
+
+describe('POST /auth/login', () => {
+  let server: FastifyInstance
+  
+  beforeAll(async () => {
+    server = await getTestServer()
+  })
+
+  it('should login with valid credentials', async () => {
+    const response = await server.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'test@example.com', password: 'Test123!' }
+    })
+    
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toHaveProperty('accessToken')
+  })
+})
+```
+
+**Example E2E Test:**
+```typescript
+import { describe, it, expect } from 'vitest'
+import axios from 'axios'
+
+describe('Complete Auth Flow', () => {
+  it('should register, login, and access protected route', async () => {
+    const api = axios.create({ baseURL: 'http://localhost:3000' })
+    
+    // 1. Register
+    const registerRes = await api.post('/auth/register', {
+      email: 'newuser@example.com',
+      password: 'Password123!',
+      name: 'New User'
+    })
+    expect(registerRes.status).toBe(201)
+    
+    // 2. Login
+    const loginRes = await api.post('/auth/login', {
+      email: 'newuser@example.com',
+      password: 'Password123!'
+    })
+    const token = loginRes.data.accessToken
+    
+    // 3. Access protected route
+    const protectedRes = await api.get('/items', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    expect(protectedRes.status).toBe(200)
+  })
+})
+```
+
+### Test Fixtures and Helpers
+
+**Using Fixtures:**
+```typescript
+import { testUsers } from '@tests/fixtures/users.fixture'
+
+// Use predefined test users
+const adminUser = testUsers.admin
+```
+
+**Using Test Helpers:**
+```typescript
+import { getAuthToken, wait } from '@tests/helpers/test-utils'
+
+// Get authenticated token
+const token = await getAuthToken(server, 'admin@example.com', 'Admin123!')
+
+// Wait for async operations
+await wait(1000)
+```
+
+### Test Coverage Goals
+
+- **Unit Tests**: ≥ 70% coverage (configured in `vitest.config.ts`)
+- **Integration Tests**: All API endpoints covered
+- **E2E Tests**: Critical user flows covered
+
+View coverage report:
+```bash
+npm run test:coverage
+# Open coverage/index.html in browser to see detailed report
+```
+
+### Test Environment
+
+Tests run with a separate `.env.test` configuration:
+- Separate test database
+- Test Redis instance (or mocked)
+- Test JWT secrets (never use production secrets!)
+- Silent logging to reduce noise
+
+### Continuous Integration
+
+Tests are designed to run in CI/CD pipelines:
+
+```bash
+npm run test:ci  # Runs with JSON reporter for CI
+```
+
+Example GitHub Actions workflow:
+```yaml
+- name: Run tests
+  run: npm run test:ci
+  
+- name: Upload coverage
+  uses: codecov/codecov-action@v3
+  with:
+    files: ./coverage/coverage-final.json
+```
+
+### Best Practices
+
+1. **Arrange-Act-Assert**: Structure tests clearly
+2. **Descriptive names**: Use `it('should do X when Y')` format
+3. **One assertion focus**: Test one thing per test case
+4. **Mock external dependencies**: Keep unit tests fast and isolated
+5. **Clean up**: Use `afterEach` / `afterAll` for cleanup
+6. **Use fixtures**: Reuse test data across tests
+7. **Test edge cases**: Don't just test happy paths
 
 ## Error Handling
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sleep, retry, deepClone, isEmpty, randomString, chunk } from './helpers'
+import { sleep, retry, deepClone, isEmpty, randomString, chunk } from '@/utils/helpers'
 
 describe('Helpers', () => {
   describe('sleep', () => {
@@ -107,3 +107,4 @@ describe('Helpers', () => {
     })
   })
 })
+
