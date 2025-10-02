@@ -1,4 +1,4 @@
-import Fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import Fastify, { FastifyInstance } from 'fastify'
 import fastifyCors from '@fastify/cors'
 import fastifyHelmet from '@fastify/helmet'
 import fastifyRateLimit from '@fastify/rate-limit'
@@ -13,18 +13,26 @@ import { jwtPlugin } from '@/plugins/jwt.plugin'
 import { requestContextPlugin } from '@/plugins/request-context.plugin'
 import { createDIContainer, DIContainer } from '@/container'
 import { errorHandler } from '@/middleware/error-handler.middleware'
-import { ServiceRegistry, getServiceRegistry } from '@/services/service-registry.service'
 import { RATE_LIMITS, ROUTES, ServiceStatus } from '@/constants'
 
 const logger = new Logger('App')
 
-// Service Registry (replaces global mutable state)
-let serviceRegistry: ServiceRegistry
+/**
+ * Application context - NO GLOBAL STATE
+ * Everything is passed through this context
+ */
+export interface AppContext {
+  fastify: FastifyInstance
+  container: Awaited<DIContainer>
+}
 
 /**
  * Create and configure Fastify app
+ * Pure factory function - no side effects, no global state
  */
-export async function createApp(): Promise<FastifyInstance> {
+export async function createApp(): Promise<AppContext> {
+  logger.info('Creating Fastify application...')
+
   const fastify = Fastify({
     logger:
       Config.NODE_ENV === 'development'
@@ -44,13 +52,8 @@ export async function createApp(): Promise<FastifyInstance> {
           },
   })
 
-  // Initialize Service Registry
-  serviceRegistry = getServiceRegistry()
-  await serviceRegistry.initialize()
-
   // Create DI container
-  const container = createDIContainer()
-  serviceRegistry.container = container
+  const container = await createDIContainer()
 
   // Decorate fastify with container for access in plugins/routes
   fastify.decorate('diContainer', container)
@@ -61,7 +64,7 @@ export async function createApp(): Promise<FastifyInstance> {
   // Register request context plugin (correlation ID, tracing)
   await fastify.register(requestContextPlugin)
 
-  // Security: Helmet
+  // Security: Helmet with proper CSP
   await fastify.register(fastifyHelmet, {
     contentSecurityPolicy: {
       directives: {
@@ -74,9 +77,8 @@ export async function createApp(): Promise<FastifyInstance> {
     crossOriginEmbedderPolicy: Config.NODE_ENV === 'production',
   })
 
-  // Rate limiting - critical for auth endpoints (disabled in test environment)
+  // Rate limiting - disabled in test environment
   if (Config.NODE_ENV !== 'test') {
-    // Global rate limit
     await fastify.register(fastifyRateLimit, {
       max: RATE_LIMITS.GLOBAL.MAX,
       timeWindow: RATE_LIMITS.GLOBAL.TIMEWINDOW,
@@ -93,66 +95,62 @@ export async function createApp(): Promise<FastifyInstance> {
 
   // Register Swagger
   if (Config.ENABLE_SWAGGER) {
-    fastify.register(fastifySwagger, swaggerConfig)
-    fastify.register(fastifySwaggerUi, swaggerUiConfig)
+    await fastify.register(fastifySwagger, swaggerConfig)
+    await fastify.register(fastifySwaggerUi, swaggerUiConfig)
   }
 
-  // Configure CORS
-  const getCorsOrigin = () => {
-    if (Config.NODE_ENV === 'production') {
-      return Config.CORS_ORIGIN === '*' ? false : Config.CORS_ORIGIN
-    }
-    return '*'
-  }
-
-  // Enable CORS
+  // FIXED: Proper CORS configuration
+  // Never allow credentials with wildcard origin
+  const corsOrigin = getCorsOrigin()
   await fastify.register(fastifyCors, {
-    origin: getCorsOrigin(),
+    origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID', 'X-Request-ID'],
     exposedHeaders: ['X-Correlation-ID', 'X-Request-ID'],
-    credentials: true,
+    credentials: corsOrigin !== '*', // Only allow credentials if origin is specific
   })
 
-  // Health check endpoint with live checks
+  // Health check endpoint with live DB check
   fastify.get(
     ROUTES.HEALTH,
     {
       schema: {
-        description: 'Health check endpoint with live service status',
+        description: 'Health check endpoint with database status',
         tags: ['System'],
         response: {
           200: {
             type: 'object',
             properties: {
-              status: { type: 'string' },
+              status: { type: 'string', enum: ['healthy', 'unhealthy'] },
               timestamp: { type: 'string' },
               uptime: { type: 'number' },
-              services: {
-                type: 'object',
-                properties: {
-                  redis: { type: 'string' },
-                  postgres: { type: 'string' },
-                },
-              },
+              database: { type: 'string' },
             },
           },
         },
       },
     },
     async (_, reply) => {
-      const health = serviceRegistry.getHealth()
+      // Perform real-time database health check
+      let dbStatus = ServiceStatus.UNAVAILABLE
+      let overallStatus = ServiceStatus.UNAVAILABLE
 
-      const status = health.postgres === false ? ServiceStatus.DEGRADED : ServiceStatus.AVAILABLE
+      try {
+        const prisma = container.cradle.prisma
+        if (prisma && typeof prisma.$queryRaw === 'function') {
+          await prisma.$queryRaw`SELECT 1`
+          dbStatus = ServiceStatus.AVAILABLE
+          overallStatus = ServiceStatus.AVAILABLE
+        }
+      } catch (error) {
+        logger.error('Health check failed:', error)
+      }
 
       return reply.send({
-        status,
+        status: overallStatus,
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        services: {
-          redis: health.redis ? ServiceStatus.AVAILABLE : ServiceStatus.UNAVAILABLE,
-          postgres: health.postgres ? ServiceStatus.AVAILABLE : ServiceStatus.UNAVAILABLE,
-        },
+        database: dbStatus,
       })
     }
   )
@@ -171,6 +169,7 @@ export async function createApp(): Promise<FastifyInstance> {
               message: { type: 'string' },
               version: { type: 'string' },
               docs: { type: 'string' },
+              environment: { type: 'string' },
             },
           },
         },
@@ -181,33 +180,41 @@ export async function createApp(): Promise<FastifyInstance> {
         message: 'Welcome to Fastify Service Template',
         version: Config.SERVICE_VERSION,
         docs: ROUTES.DOCS,
+        environment: Config.NODE_ENV,
       })
     }
   )
 
   // Register all routes
-  fastify.register(registerRoutes)
+  await fastify.register(registerRoutes)
 
-  return fastify
+  logger.info('Fastify application created successfully')
+
+  return { fastify, container }
 }
 
 /**
- * Get service registry instance
+ * Get CORS origin configuration
+ * FIXED: No more wildcard + credentials vulnerability
  */
-export function getAppServiceRegistry(): ServiceRegistry {
-  return serviceRegistry
-}
+function getCorsOrigin(): string | string[] | boolean {
+  if (Config.NODE_ENV === 'production') {
+    if (Config.CORS_ORIGIN === '*') {
+      logger.warn('⚠️  CORS wildcard (*) in production - credentials disabled for security')
+      return '*'
+    }
+    // Parse multiple origins
+    return Config.CORS_ORIGIN.split(',').map(o => o.trim())
+  }
 
-/**
- * Get DI container
- */
-export function getContainer(): DIContainer | undefined {
-  return serviceRegistry?.container
+  // Development mode - allow all but still log warning
+  logger.info('Development mode - CORS set to wildcard (*)')
+  return '*'
 }
 
 // Type declaration for Fastify decorator
 declare module 'fastify' {
   interface FastifyInstance {
-    diContainer: DIContainer
+    diContainer: Awaited<DIContainer>
   }
 }

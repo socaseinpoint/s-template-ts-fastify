@@ -1,11 +1,15 @@
 export class AppError extends Error {
   public readonly statusCode: number
   public readonly isOperational: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public readonly details?: any
 
-  constructor(message: string, statusCode = 500, isOperational = true) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(message: string, statusCode = 500, isOperational = true, details?: any) {
     super(message)
     this.statusCode = statusCode
     this.isOperational = isOperational
+    this.details = details
 
     Object.setPrototypeOf(this, AppError.prototype)
     Error.captureStackTrace(this, this.constructor)
@@ -13,8 +17,9 @@ export class AppError extends Error {
 }
 
 export class ValidationError extends AppError {
-  constructor(message: string) {
-    super(message, 400)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(message: string, statusCode = 400, details?: any) {
+    super(message, statusCode, true, details)
   }
 }
 

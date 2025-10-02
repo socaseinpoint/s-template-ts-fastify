@@ -311,84 +311,128 @@ Redis support is included for caching and session management:
 
 ### Test Structure
 
-The project uses a well-organized test structure with clear separation of concerns:
+The project uses a **pragmatic two-tier testing strategy**:
 
 ```
 tests/
-├── unit/           # Unit tests - testing individual functions/classes
-│   ├── services/   # Service layer tests
+├── unit/           # Unit tests - Fast, isolated, mocked
+│   ├── services/   # Business logic tests
 │   ├── utils/      # Utility function tests
 │   ├── middleware/ # Middleware tests
 │   └── routes/     # Route handler tests
-├── integration/    # Integration tests - testing API endpoints
-│   └── *.integration.test.ts
-├── e2e/           # End-to-end tests - testing full user flows
+├── e2e/            # End-to-end tests - Real server, real database
 │   └── *.e2e.test.ts
-├── fixtures/      # Test data and mock data
+├── fixtures/       # Test data
 │   ├── users.fixture.ts
 │   └── items.fixture.ts
-├── mocks/         # Mock implementations
+├── mocks/          # Mock implementations
 │   ├── redis.mock.ts
 │   └── database.mock.ts
-├── helpers/       # Test utilities
-│   ├── test-server.ts   # Test server setup
-│   └── test-utils.ts    # Common test utilities
-└── setup/         # Setup and teardown
-    ├── setup.ts
-    └── teardown.ts
+├── helpers/        # Test utilities
+│   ├── test-server.ts
+│   └── test-utils.ts
+└── setup/          # Setup and teardown
+    └── setup.ts
 ```
+
+### Quick Start
+
+```bash
+# Run unit tests (fast, no setup required)
+npm test
+
+# Run E2E tests (requires Docker)
+npm run test:e2e:full
+```
+
+### Test Types
+
+**Unit Tests** (`tests/unit/`) - **43 tests ✅**
+- ⚡ Fast execution (< 1 second)
+- 🎯 Test business logic in isolation
+- 🔧 Fully mocked dependencies
+- ✅ Always pass (no external dependencies)
+- 💯 High code coverage (70%+ required)
+
+**E2E Tests** (`tests/e2e/`) - **15 tests**
+- 🚀 Test complete user flows
+- 🗄️ Real PostgreSQL database
+- 🌐 Real HTTP requests
+- 🐳 Managed via Docker Compose
+- ⏱️ Slower execution (1-2 seconds per test)
 
 ### Running Tests
 
 ```bash
-# Run all tests
-npm test
+# Unit tests (default - fast, always works)
+npm test                    # Run all unit tests
+npm run test:unit           # Same as above
+npm run test:unit:watch     # Watch mode
+npm run test:coverage       # With coverage report
 
-# Run by type
-npm run test:unit           # Only unit tests
-npm run test:integration    # Only integration tests
-npm run test:e2e           # Only E2E tests
+# E2E tests (requires setup)
+npm run test:e2e:full       # Full automated E2E (recommended)
+npm run test:e2e            # E2E only (server must be running)
 
-# Watch mode (auto-rerun on file changes)
-npm run test:watch          # All tests
-npm run test:unit:watch     # Only unit tests
-npm run test:integration:watch  # Only integration tests
-npm run test:e2e:watch      # Only E2E tests
+# Development
+npm run test:watch          # Watch mode for all tests
+npm run test:ui             # Interactive UI
+npm run test:changed        # Test only changed files
 
-# Coverage reports
-npm run test:coverage       # Full coverage report
-npm run test:coverage:unit  # Unit tests coverage
-npm run test:coverage:integration  # Integration tests coverage
-npm run test:coverage:full  # Complete coverage report
-
-# Other useful commands
-npm run test:ui            # Open Vitest UI (interactive test runner)
-npm run test:changed       # Test only changed files
-npm run test:ci            # Run tests in CI mode with JSON reporter
+# CI/CD
+npm run test:ci             # Unit tests with coverage for CI
 ```
 
-### Test Types Explained
+### E2E Test Setup
 
-**Unit Tests** (`tests/unit/`)
-- Test individual functions, classes, or modules in isolation
-- Use mocks for external dependencies (database, Redis, etc.)
-- Fast execution (milliseconds)
-- High code coverage focus
-- Example: Testing password validation logic, JWT token generation
+E2E tests require a **real PostgreSQL database** (via Docker).
 
-**Integration Tests** (`tests/integration/`)
-- Test API endpoints with real server instance
-- May use mocked database/services or test database
-- Test request/response handling, middleware, authentication
-- Medium execution speed (seconds)
-- Example: Testing login endpoint returns correct status codes and tokens
+**Automated (Recommended):**
+```bash
+npm run test:e2e:full
+```
 
-**E2E Tests** (`tests/e2e/`)
-- Test complete user workflows across multiple endpoints
-- Run against real (or close to real) environment
-- Test the entire application stack
-- Slower execution (seconds to minutes)
-- Example: Register → Login → Access Protected Route → Update Profile → Logout
+This script automatically:
+1. Starts PostgreSQL on port 5433 (Docker)
+2. Runs migrations
+3. Seeds test data
+4. Starts test server on port 3001
+5. Runs E2E tests
+6. Cleans up
+
+**Manual Setup:**
+```bash
+# 1. Start test database
+npm run docker:test:up
+
+# 2. Run migrations and seed
+export DATABASE_URL="postgresql://testuser:testpassword@localhost:5433/fastify_test"
+npm run prisma:migrate
+npm run prisma:seed
+
+# 3. Start test server (in separate terminal)
+DATABASE_URL="postgresql://testuser:testpassword@localhost:5433/fastify_test" \
+PORT=3001 npm run start:dev
+
+# 4. Run E2E tests (in another terminal)
+npm run test:e2e
+
+# 5. Cleanup
+npm run docker:test:down
+```
+
+**See `E2E_TESTING.md` for detailed E2E testing guide.**
+
+### Test Coverage Goals
+
+- **Unit Tests**: ≥ 70% coverage (enforced in CI)
+- **E2E Tests**: Critical user flows covered
+
+View coverage report:
+```bash
+npm run test:coverage
+# Open coverage/index.html in browser
+```
 
 ### Writing Tests
 

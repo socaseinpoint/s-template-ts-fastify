@@ -1,5 +1,6 @@
-import { createContainer, asValue, asFunction, InjectionMode, Lifetime } from 'awilix'
+import { createContainer, asValue, asClass, InjectionMode, Lifetime, AwilixContainer } from 'awilix'
 import { PrismaClient } from '@prisma/client'
+import { Logger } from '@/utils/logger'
 
 // Repositories
 import { UserRepository, IUserRepository } from '@/repositories/user.repository'
@@ -10,6 +11,8 @@ import { TokenRepository, ITokenRepository } from '@/repositories/token.reposito
 import { AuthService } from '@/services/auth.service'
 import { UserService } from '@/services/user.service'
 import { ItemService } from '@/services/item.service'
+
+const logger = new Logger('Container')
 
 export interface ICradle {
   // Infrastructure
@@ -26,69 +29,78 @@ export interface ICradle {
   itemService: ItemService
 }
 
+export interface ContainerOptions {
+  prisma?: PrismaClient
+  skipConnect?: boolean
+}
+
 /**
- * Create and configure the DI container with proper lifecycle management
+ * Create and configure the DI container
+ * Simplified version without over-engineering
  */
-export function createDIContainer() {
+export async function createDIContainer(
+  options: ContainerOptions = {}
+): Promise<AwilixContainer<ICradle>> {
   const container = createContainer<ICradle>({
-    injectionMode: InjectionMode.PROXY,
+    injectionMode: InjectionMode.CLASSIC,
   })
 
-  // Register Prisma as singleton with proper disposal
-  container.register({
-    prisma: asFunction(
-      () => {
-        const client = new PrismaClient({
-          log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-        })
-        return client
-      },
-      {
-        lifetime: Lifetime.SINGLETON,
-        dispose: async client => {
-          await client.$disconnect()
-        },
+  // Initialize Prisma client
+  let prismaClient: PrismaClient
+
+  if (options.prisma) {
+    // Use provided Prisma client (for testing)
+    prismaClient = options.prisma
+    logger.info('Using provided Prisma client')
+  } else if (!process.env.DATABASE_URL) {
+    // No DATABASE_URL - mock for unit tests
+    if (process.env.NODE_ENV === 'test') {
+      logger.warn('⚠️  Unit test mode: using mock Prisma client')
+      prismaClient = {} as PrismaClient
+    } else {
+      throw new Error('DATABASE_URL is required in non-test environments')
+    }
+  } else {
+    // Create new Prisma client and connect
+    logger.info('Initializing Prisma client...')
+    prismaClient = new PrismaClient({
+      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    })
+
+    if (!options.skipConnect) {
+      try {
+        await prismaClient.$connect()
+        logger.info('✅ Prisma client connected to database')
+      } catch (error) {
+        logger.error('❌ Failed to connect to database', error)
+        throw new Error(`Database connection failed: ${error}`)
       }
-    ),
+    }
+  }
+
+  // Register Prisma
+  container.register({
+    prisma: asValue(prismaClient),
   })
 
-  // Register repositories as singletons with explicit dependencies
+  // Register repositories
   container.register({
-    userRepository: asFunction(
-      ({ prisma }: { prisma: PrismaClient }) => new UserRepository(prisma),
-      { lifetime: Lifetime.SINGLETON }
-    ),
-    itemRepository: asFunction(
-      ({ prisma }: { prisma: PrismaClient }) => new ItemRepository(prisma),
-      { lifetime: Lifetime.SINGLETON }
-    ),
-    tokenRepository: asFunction(() => new TokenRepository(), { lifetime: Lifetime.SINGLETON }),
+    userRepository: asClass(UserRepository, { lifetime: Lifetime.SINGLETON }),
+    itemRepository: asClass(ItemRepository, { lifetime: Lifetime.SINGLETON }),
+    tokenRepository: asClass(TokenRepository, { lifetime: Lifetime.SINGLETON }),
   })
 
-  // Register services as singletons with explicit dependencies
+  // Register business services
   container.register({
-    authService: asFunction(
-      ({
-        userRepository,
-        tokenRepository,
-      }: {
-        userRepository: IUserRepository
-        tokenRepository: ITokenRepository
-      }) => new AuthService(userRepository, tokenRepository),
-      { lifetime: Lifetime.SINGLETON }
-    ),
-    userService: asFunction(
-      ({ userRepository }: { userRepository: IUserRepository }) => new UserService(userRepository),
-      { lifetime: Lifetime.SINGLETON }
-    ),
-    itemService: asFunction(
-      ({ itemRepository }: { itemRepository: IItemRepository }) => new ItemService(itemRepository),
-      { lifetime: Lifetime.SINGLETON }
-    ),
+    authService: asClass(AuthService, { lifetime: Lifetime.SINGLETON }),
+    userService: asClass(UserService, { lifetime: Lifetime.SINGLETON }),
+    itemService: asClass(ItemService, { lifetime: Lifetime.SINGLETON }),
   })
+
+  logger.info('✅ DI Container initialized')
 
   return container
 }
 
 // Export type for container
-export type DIContainer = ReturnType<typeof createDIContainer>
+export type DIContainer = AwilixContainer<ICradle>

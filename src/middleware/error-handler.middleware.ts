@@ -59,6 +59,11 @@ export function errorHandler(
       code: error.statusCode,
     }
 
+    // Include validation details if present
+    if (error.details) {
+      response.details = error.details
+    }
+
     // Include stack trace in development
     if (Config.NODE_ENV === 'development') {
       response.stack = error.stack

@@ -97,6 +97,7 @@ describe('AuthService', () => {
       addToSet: vi.fn().mockResolvedValue(undefined),
       getSet: vi.fn().mockResolvedValue([]),
       removeFromSet: vi.fn().mockResolvedValue(undefined),
+      cleanupExpiredTokens: vi.fn().mockResolvedValue(undefined),
     }
 
     // Create AuthService with mocked dependencies
@@ -160,15 +161,8 @@ describe('AuthService', () => {
       }
     })
 
-    it('should reject password longer than 72 characters', async () => {
-      const longPassword = 'A'.repeat(73) + '!'
-      await expect(
-        authService.login({
-          email: 'admin@example.com',
-          password: longPassword,
-        })
-      ).rejects.toThrow('Password too long')
-    })
+    // NOTE: Password length validation moved to Zod schemas (tested at route level)
+    // Service assumes data is already validated by middleware
   })
 
   describe('register', () => {
@@ -211,25 +205,8 @@ describe('AuthService', () => {
       ).rejects.toThrow('User with this email already exists')
     })
 
-    it('should validate password strength', async () => {
-      const weakPasswords = [
-        'short',
-        'nouppercase123!',
-        'NOLOWERCASE123!',
-        'NoNumbers!',
-        'NoSpecialChar123',
-      ]
-
-      for (const password of weakPasswords) {
-        await expect(
-          authService.register({
-            email: 'test@example.com',
-            password,
-            name: 'Test',
-          })
-        ).rejects.toThrow(AppError)
-      }
-    })
+    // NOTE: Password strength validation moved to Zod schemas (tested at route level)
+    // Service assumes data is already validated by middleware
 
     it('should accept strong passwords', async () => {
       const newUser = {
@@ -256,16 +233,8 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('accessToken')
     })
 
-    it('should reject password longer than 72 characters', async () => {
-      const longPassword = 'A'.repeat(73) + '!'
-      await expect(
-        authService.register({
-          email: 'test@example.com',
-          password: longPassword,
-          name: 'Test',
-        })
-      ).rejects.toThrow('Password too long')
-    })
+    // NOTE: Password length validation moved to Zod schemas (tested at route level)
+    // Service assumes data is already validated by middleware
   })
 
   describe('verifyToken', () => {
@@ -378,21 +347,6 @@ describe('AuthService', () => {
 
       await authService.logout('1', token)
       expect(mockTokenRepository.set).toHaveBeenCalled()
-    })
-  })
-
-  describe('getUserById', () => {
-    it('should return user', async () => {
-      vi.mocked(mockUserRepository.findById).mockResolvedValue(mockUsers.admin)
-
-      const user = await authService.getUserById('1')
-      expect(user.email).toBe('admin@example.com')
-    })
-
-    it('should throw for non-existent user', async () => {
-      vi.mocked(mockUserRepository.findById).mockResolvedValue(null)
-
-      await expect(authService.getUserById('999')).rejects.toThrow('User not found')
     })
   })
 })

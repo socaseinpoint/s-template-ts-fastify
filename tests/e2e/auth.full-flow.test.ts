@@ -4,7 +4,7 @@ import { generateUniqueEmail, wait } from '@tests/helpers/test-utils'
 
 describe('Full Authentication Flow E2E Tests', () => {
   let api: AxiosInstance
-  const baseURL = 'http://localhost:3000'
+  let baseURL: string
 
   // Test user data
   const testUser = {
@@ -19,10 +19,17 @@ describe('Full Authentication Flow E2E Tests', () => {
   let userId: string
 
   beforeAll(() => {
+    // E2E tests expect server to be running (started by test script)
+    // See: scripts/test-e2e.sh or E2E_TESTING.md
+    baseURL = process.env.E2E_BASE_URL || 'http://localhost:3001'
+
     api = axios.create({
       baseURL,
       validateStatus: () => true, // Don't throw on any status
     })
+
+    console.log('✅ Running E2E tests against:', baseURL)
+    console.log('ℹ️  Server should be started via: npm run test:e2e:full')
   })
 
   describe('Complete Authentication Flow', () => {

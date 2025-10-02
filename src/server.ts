@@ -1,102 +1,83 @@
+// IMPORTANT: Load environment variables FIRST before any imports
+// This ensures Config validation uses the correct values
 import dotenv from 'dotenv'
-dotenv.config()
+import * as path from 'path'
 
-import { createApp, getAppServiceRegistry, getContainer } from '@/app'
+if (process.env.NODE_ENV === 'test' && process.env.USE_ENV_FILE) {
+  // Load .env.test for E2E tests
+  const envTestPath = path.resolve(__dirname, '../.env.test')
+  dotenv.config({ path: envTestPath })
+  console.log('📝 Loaded test environment from .env.test')
+} else if (process.env.NODE_ENV !== 'test') {
+  // Load .env for dev/prod, but don't override existing vars
+  dotenv.config({ override: false })
+}
+// For unit tests - don't load any .env file (use mocks)
+
+// NOW import modules (after env is loaded)
+import { createApp } from '@/app'
 import { Logger } from '@/utils/logger'
 import { Config } from '@/config'
-import { FastifyInstance } from 'fastify'
+import { setupShutdownHandlers } from '@/utils/graceful-shutdown'
+import { setupProcessErrorHandlers } from '@/utils/process-handlers'
 
 const logger = new Logger('Server')
 
-let fastify: FastifyInstance | undefined
-
-// Start server function
+/**
+ * Start server function
+ * Clean, focused, single responsibility
+ */
 async function startServer() {
   try {
-    logger.info('Starting server initialization...')
+    logger.info('🚀 Starting server initialization...')
+    logger.info(`Environment: ${Config.NODE_ENV}`)
+    logger.info(`Service: ${Config.SERVICE_NAME} v${Config.SERVICE_VERSION}`)
 
-    // Create and configure app
-    fastify = await createApp()
+    // Create app context (no global state!)
+    const { fastify, container } = await createApp()
 
-    // Start the server
+    // Setup shutdown handlers BEFORE starting the server
+    setupShutdownHandlers({ fastify, container })
+    setupProcessErrorHandlers({ fastify, container })
+
+    // Start listening
     const address = await fastify.listen({
       port: Config.PORT,
       host: Config.HOST || '0.0.0.0',
     })
 
-    logger.info(`Server running on ${address}`)
-    logger.info(`Swagger docs available at ${address}/docs`)
+    logger.info(`✅ Server running on ${address}`)
 
-    // Service status
-    const serviceRegistry = getAppServiceRegistry()
-    const health = serviceRegistry.getHealth()
+    if (Config.ENABLE_SWAGGER) {
+      logger.info(`📚 Swagger docs: ${address}/docs`)
+    }
 
-    logger.info('=== Services Status ===')
-    logger.info(`Redis: ${health.redis ? '✅ Available' : '❌ Unavailable'}`)
-    logger.info(`PostgreSQL: ${health.postgres ? '✅ Available' : '❌ Unavailable'}`)
-    logger.info('=======================')
+    // Check database connection
+    try {
+      const prisma = container.cradle.prisma
+      if (prisma && typeof prisma.$queryRaw === 'function') {
+        await prisma.$queryRaw`SELECT 1`
+        logger.info('=== Database Status ===')
+        logger.info('  PostgreSQL: ✅ Connected')
+        logger.info('=======================')
+      }
+    } catch (error) {
+      logger.warn('⚠️  Database connection check failed:', error)
+    }
 
     // Print routes in development
     if (Config.NODE_ENV === 'development') {
-      logger.info('\n=== Registered routes ===')
+      logger.info('\n=== Registered Routes ===')
       logger.info(fastify.printRoutes())
-      logger.info('========================\n')
+      logger.info('==========================\n')
     }
+
+    logger.info('✅ Server started successfully')
   } catch (error) {
-    logger.error('Failed to start server', error)
+    logger.error('❌ Failed to start server', error)
     process.exit(1)
   }
 }
-
-// Graceful shutdown
-const gracefulShutdown = async (signal: string) => {
-  logger.info(`${signal} received, starting graceful shutdown`)
-
-  try {
-    // Close Fastify server
-    if (fastify) {
-      await fastify.close()
-      logger.info('Fastify server closed')
-    }
-
-    // Shutdown services via registry
-    const serviceRegistry = getAppServiceRegistry()
-    if (serviceRegistry) {
-      await serviceRegistry.shutdown()
-    }
-
-    // Dispose DI container
-    const container = getContainer()
-    if (container) {
-      await container.dispose()
-      logger.info('DI container disposed')
-    }
-
-    logger.info('Server closed successfully')
-    process.exit(0)
-  } catch (error) {
-    logger.error('Error during shutdown', error)
-    process.exit(1)
-  }
-}
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
-process.on('SIGINT', () => gracefulShutdown('SIGINT'))
-
-// Handle uncaught exceptions
-process.on('uncaughtException', error => {
-  logger.error('Uncaught exception', error)
-  gracefulShutdown('UNCAUGHT_EXCEPTION')
-})
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled rejection', { reason, promise })
-  gracefulShutdown('UNHANDLED_REJECTION')
-})
 
 // Start the server
 startServer()
-
-// Export for testing
-export default fastify

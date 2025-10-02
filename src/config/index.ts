@@ -53,7 +53,7 @@ const envSchema = z.object({
   RATE_LIMIT_TIMEWINDOW: z.coerce.number().int().positive().default(60000), // 1 minute in ms
 })
 
-// Validate environment variables on import
+// Validate environment variables
 function validateEnv() {
   try {
     const parsed = envSchema.parse(process.env)
@@ -86,6 +86,16 @@ function validateEnv() {
   }
 }
 
-export const Config = validateEnv()
+// Lazy initialization - validates when first accessed
+let configInstance: z.infer<typeof envSchema> | null = null
 
-export type ConfigType = typeof Config
+export const Config = new Proxy({} as z.infer<typeof envSchema>, {
+  get(target, prop) {
+    if (!configInstance) {
+      configInstance = validateEnv()
+    }
+    return configInstance[prop as keyof typeof configInstance]
+  },
+})
+
+export type ConfigType = z.infer<typeof envSchema>

@@ -1,8 +1,4 @@
 import { beforeAll, afterAll, afterEach, vi } from 'vitest'
-import dotenv from 'dotenv'
-
-// Load test environment variables
-dotenv.config({ path: '.env.test' })
 
 // Override NODE_ENV to test
 process.env.NODE_ENV = 'test'
