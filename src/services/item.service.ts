@@ -1,6 +1,5 @@
 import { Logger } from '@/utils/logger'
-import { AppError } from '@/utils/errors'
-import prisma from '@/services/prisma.service'
+import { IItemRepository } from '@/repositories/item.repository'
 import { ItemCategory, ItemStatus } from '@prisma/client'
 
 interface GetItemsParams {
@@ -38,7 +37,7 @@ interface UpdateItemDto {
 export class ItemService {
   private logger: Logger
 
-  constructor() {
+  constructor(private itemRepository: IItemRepository) {
     this.logger = new Logger('ItemService')
   }
 
@@ -81,30 +80,14 @@ export class ItemService {
       where.status = status.toUpperCase() as ItemStatus
     }
 
-    // Get total count
-    const total = await prisma.item.count({ where })
-
-    // Get paginated items
-    const items = await prisma.item.findMany({
-      where,
+    // Use repository
+    const { items, total } = await this.itemRepository.findMany({
       skip: (page - 1) * limit,
       take: limit,
-      orderBy: {
-        [sortBy]: sortOrder,
-      },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        category: true,
-        price: true,
-        quantity: true,
-        status: true,
-        tags: true,
-        metadata: true,
-        userId: true,
-        createdAt: true,
-        updatedAt: true,
+      where: {
+        category: category ? (category.toUpperCase() as ItemCategory) : undefined,
+        status: status ? (status.toUpperCase() as ItemStatus) : undefined,
+        name: search,
       },
     })
 
@@ -128,23 +111,7 @@ export class ItemService {
   async getItemById(id: string): Promise<any | null> {
     this.logger.debug(`Fetching item with id: ${id}`)
 
-    const item = await prisma.item.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        category: true,
-        price: true,
-        quantity: true,
-        status: true,
-        tags: true,
-        metadata: true,
-        userId: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    })
+    const item = await this.itemRepository.findById(id)
 
     if (!item) {
       return null
@@ -160,17 +127,15 @@ export class ItemService {
   async createItem(dto: CreateItemDto): Promise<any> {
     this.logger.info(`Creating new item: ${dto.name}`)
 
-    const item = await prisma.item.create({
-      data: {
-        name: dto.name,
-        description: dto.description,
-        category: dto.category.toUpperCase() as ItemCategory,
-        price: dto.price,
-        quantity: dto.quantity || 0,
-        tags: dto.tags || [],
-        metadata: dto.metadata,
-        userId: dto.userId,
-      },
+    const item = await this.itemRepository.create({
+      name: dto.name,
+      description: dto.description,
+      category: dto.category.toUpperCase() as ItemCategory,
+      price: dto.price,
+      quantity: dto.quantity || 0,
+      tags: dto.tags || [],
+      metadata: dto.metadata,
+      userId: dto.userId,
     })
 
     this.logger.info(`Item created with id: ${item.id}`)
@@ -187,27 +152,25 @@ export class ItemService {
 
     try {
       const updateData: any = { ...dto }
-      
+
       if (dto.category) {
         updateData.category = dto.category.toUpperCase() as ItemCategory
       }
-      
+
       if (dto.status) {
         updateData.status = dto.status.toUpperCase() as ItemStatus
       }
 
-      const item = await prisma.item.update({
-        where: { id },
-        data: updateData,
-      })
+      const item = await this.itemRepository.update(id, updateData)
 
       return {
         ...item,
         category: item.category.toLowerCase(),
         status: item.status.toLowerCase(),
       }
-    } catch (error: any) {
-      if (error.code === 'P2025') {
+    } catch (error) {
+      // Type guard for Prisma errors
+      if (error instanceof Error && 'code' in error && (error as any).code === 'P2025') {
         return null
       }
       throw error
@@ -218,12 +181,11 @@ export class ItemService {
     this.logger.info(`Deleting item with id: ${id}`)
 
     try {
-      await prisma.item.delete({
-        where: { id },
-      })
+      await this.itemRepository.delete(id)
       return true
-    } catch (error: any) {
-      if (error.code === 'P2025') {
+    } catch (error) {
+      // Type guard for Prisma errors
+      if (error instanceof Error && 'code' in error && (error as any).code === 'P2025') {
         return false
       }
       throw error
@@ -233,14 +195,10 @@ export class ItemService {
   async batchDelete(ids: string[]): Promise<{ deletedCount: number }> {
     this.logger.info(`Batch deleting ${ids.length} items`)
 
-    const result = await prisma.item.deleteMany({
-      where: {
-        id: { in: ids },
-      },
-    })
+    const count = await this.itemRepository.deleteMany(ids)
 
-    this.logger.info(`Deleted ${result.count} items`)
+    this.logger.info(`Deleted ${count} items`)
 
-    return { deletedCount: result.count }
+    return { deletedCount: count }
   }
 }

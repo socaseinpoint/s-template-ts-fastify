@@ -336,4 +336,3 @@ describe('Full Authentication Flow E2E Tests', () => {
     })
   })
 })
-

@@ -1,6 +1,5 @@
 import { Logger } from '@/utils/logger'
-import prisma from '@/services/prisma.service'
-import { AppError } from '@/utils/errors'
+import { IUserRepository } from '@/repositories/user.repository'
 import { Role } from '@prisma/client'
 
 interface GetUsersParams {
@@ -19,7 +18,7 @@ interface UpdateUserDto {
 export class UserService {
   private logger: Logger
 
-  constructor() {
+  constructor(private userRepository: IUserRepository) {
     this.logger = new Logger('UserService')
   }
 
@@ -31,39 +30,11 @@ export class UserService {
   }> {
     this.logger.debug(`Fetching users with params: ${JSON.stringify(params)}`)
 
-    const { page, limit, search } = params
+    const { page, limit } = params
 
-    // Build where clause for search
-    const where = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' as const } },
-            { email: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {}
-
-    // Get total count
-    const total = await prisma.user.count({ where })
-
-    // Get paginated users
-    const users = await prisma.user.findMany({
-      where,
+    const { users, total } = await this.userRepository.findMany({
       skip: (page - 1) * limit,
       take: limit,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
     })
 
     return {
@@ -80,19 +51,7 @@ export class UserService {
   async getUserById(id: string): Promise<any | null> {
     this.logger.debug(`Fetching user with id: ${id}`)
 
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    })
+    const user = await this.userRepository.findById(id)
 
     if (!user) {
       return null
@@ -108,31 +67,18 @@ export class UserService {
     this.logger.info(`Updating user with id: ${id}`)
 
     try {
-      const updatedUser = await prisma.user.update({
-        where: { id },
-        data: {
-          ...dto,
-          role: dto.role ? (dto.role.toUpperCase() as Role) : undefined,
-          updatedAt: new Date(),
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          phone: true,
-          role: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true,
-        },
+      const updatedUser = await this.userRepository.update(id, {
+        ...dto,
+        role: dto.role ? (dto.role.toUpperCase() as Role) : undefined,
       })
 
       return {
         ...updatedUser,
         role: updatedUser.role.toLowerCase(),
       }
-    } catch (error: any) {
-      if (error.code === 'P2025') {
+    } catch (error) {
+      // Type guard for Prisma errors
+      if (error instanceof Error && 'code' in error && (error as any).code === 'P2025') {
         return null
       }
       throw error
@@ -143,12 +89,11 @@ export class UserService {
     this.logger.info(`Deleting user with id: ${id}`)
 
     try {
-      await prisma.user.delete({
-        where: { id },
-      })
+      await this.userRepository.delete(id)
       return true
-    } catch (error: any) {
-      if (error.code === 'P2025') {
+    } catch (error) {
+      // Type guard for Prisma errors
+      if (error instanceof Error && 'code' in error && (error as any).code === 'P2025') {
         return false
       }
       throw error
@@ -162,24 +107,12 @@ export class UserService {
     phone?: string
     role?: Role
   }): Promise<any> {
-    const user = await prisma.user.create({
-      data: {
-        email: data.email,
-        password: data.password,
-        name: data.name,
-        phone: data.phone,
-        role: data.role || Role.USER,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const user = await this.userRepository.create({
+      email: data.email,
+      password: data.password,
+      name: data.name,
+      phone: data.phone,
+      role: data.role || Role.USER,
     })
 
     this.logger.info(`Created user with id: ${user.id}`)

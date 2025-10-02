@@ -3,8 +3,8 @@ import { Logger } from '@/utils/logger'
 import { AppError } from '@/utils/errors'
 import { PasswordUtils } from '@/utils/password'
 import { Config } from '@/config'
-import { RedisService } from '@/services/redis.service'
-import prisma from '@/services/prisma.service'
+import { IUserRepository } from '@/repositories/user.repository'
+import { ITokenRepository } from '@/repositories/token.repository'
 import { Role } from '@prisma/client'
 
 interface LoginDto {
@@ -39,11 +39,12 @@ interface TokenPayload {
 
 export class AuthService {
   private logger: Logger
-  private redisService: RedisService
 
-  constructor() {
+  constructor(
+    private userRepository: IUserRepository,
+    private tokenRepository: ITokenRepository
+  ) {
     this.logger = new Logger('AuthService')
-    this.redisService = new RedisService()
   }
 
   /**
@@ -90,19 +91,22 @@ export class AuthService {
         throw new AppError(`Invalid token type. Expected ${type} token`, 401)
       }
 
-      // Check if token is blacklisted in Redis
-      const isBlacklisted = await this.redisService.get(`blacklist:${token}`)
+      // Check if token is blacklisted
+      const isBlacklisted = await this.tokenRepository.get(`blacklist:${token}`)
       if (isBlacklisted) {
         throw new AppError('Token has been revoked', 401)
       }
 
       return payload
-    } catch (error: any) {
-      if (error.name === 'TokenExpiredError') {
-        throw new AppError('Token has expired', 401)
-      }
-      if (error.name === 'JsonWebTokenError') {
-        throw new AppError('Invalid token', 401)
+    } catch (error) {
+      // Type guard for JWT errors
+      if (error instanceof Error) {
+        if (error.name === 'TokenExpiredError') {
+          throw new AppError('Token has expired', 401)
+        }
+        if (error.name === 'JsonWebTokenError') {
+          throw new AppError('Invalid token', 401)
+        }
       }
       throw error
     }
@@ -114,10 +118,13 @@ export class AuthService {
   async login(dto: LoginDto): Promise<AuthResponse> {
     this.logger.info(`Login attempt for email: ${dto.email}`)
 
-    // Fetch user from database
-    const user = await prisma.user.findUnique({
-      where: { email: dto.email },
-    })
+    // Validate password length to prevent DoS via bcrypt
+    if (dto.password.length > 72) {
+      throw new AppError('Password too long', 400)
+    }
+
+    // Fetch user from database via repository
+    const user = await this.userRepository.findByEmail(dto.email)
 
     if (!user) {
       throw new AppError('Invalid email or password', 400)
@@ -136,12 +143,8 @@ export class AuthService {
       role: user.role.toLowerCase() as 'admin' | 'moderator' | 'user',
     })
 
-    // Store refresh token in Redis with expiration
-    await this.redisService.set(
-      `refresh:${user.id}`,
-      tokens.refreshToken,
-      7 * 24 * 60 * 60 // 7 days in seconds
-    )
+    // Store refresh token for multi-device support
+    await this.tokenRepository.addToSet(`refresh:${user.id}`, tokens.refreshToken)
 
     this.logger.info(`User ${user.email} logged in successfully`)
 
@@ -162,16 +165,19 @@ export class AuthService {
   async register(dto: RegisterDto): Promise<AuthResponse> {
     this.logger.info(`Registration attempt for email: ${dto.email}`)
 
+    // Validate password length to prevent DoS
+    if (dto.password.length > 72) {
+      throw new AppError('Password too long', 400)
+    }
+
     // Validate password strength
     const passwordValidation = PasswordUtils.validateStrength(dto.password)
     if (!passwordValidation.valid) {
       throw new AppError(`Password validation failed: ${passwordValidation.errors.join(', ')}`, 400)
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: dto.email },
-    })
+    // Check if user already exists via repository
+    const existingUser = await this.userRepository.findByEmail(dto.email)
 
     if (existingUser) {
       throw new AppError('User with this email already exists', 400)
@@ -180,15 +186,13 @@ export class AuthService {
     // Hash password
     const hashedPassword = await PasswordUtils.hash(dto.password)
 
-    // Create new user in database
-    const newUser = await prisma.user.create({
-      data: {
-        email: dto.email,
-        password: hashedPassword,
-        name: dto.name,
-        phone: dto.phone,
-        role: Role.USER,
-      },
+    // Create new user via repository
+    const newUser = await this.userRepository.create({
+      email: dto.email,
+      password: hashedPassword,
+      name: dto.name,
+      phone: dto.phone,
+      role: Role.USER,
     })
 
     const tokens = this.generateTokens({
@@ -197,12 +201,8 @@ export class AuthService {
       role: newUser.role.toLowerCase() as 'admin' | 'moderator' | 'user',
     })
 
-    // Store refresh token in Redis
-    await this.redisService.set(
-      `refresh:${newUser.id}`,
-      tokens.refreshToken,
-      7 * 24 * 60 * 60 // 7 days
-    )
+    // Store refresh token for multi-device support
+    await this.tokenRepository.addToSet(`refresh:${newUser.id}`, tokens.refreshToken)
 
     this.logger.info(`User ${newUser.email} registered successfully`)
 
@@ -229,10 +229,10 @@ export class AuthService {
     // Verify refresh token
     const payload = await this.verifyToken(refreshToken, 'refresh')
 
-    // Check if refresh token is stored in Redis
-    const storedToken = await this.redisService.get(`refresh:${payload.id}`)
+    // Check if refresh token exists in user's token set (multi-device support)
+    const storedTokens = await this.tokenRepository.getSet(`refresh:${payload.id}`)
 
-    if (storedToken !== refreshToken) {
+    if (!storedTokens.includes(refreshToken)) {
       throw new AppError('Invalid refresh token', 401)
     }
 
@@ -243,8 +243,9 @@ export class AuthService {
       role: payload.role,
     })
 
-    // Update refresh token in Redis
-    await this.redisService.set(`refresh:${payload.id}`, tokens.refreshToken, 7 * 24 * 60 * 60)
+    // Remove old refresh token and add new one
+    await this.tokenRepository.removeFromSet(`refresh:${payload.id}`, refreshToken)
+    await this.tokenRepository.addToSet(`refresh:${payload.id}`, tokens.refreshToken)
 
     this.logger.info(`Tokens refreshed for user ${payload.email}`)
 
@@ -257,23 +258,29 @@ export class AuthService {
   async logout(userId: string, accessToken?: string, refreshToken?: string): Promise<void> {
     this.logger.info(`User ${userId} logging out`)
 
-    // Remove refresh token from Redis
-    await this.redisService.del(`refresh:${userId}`)
+    // Remove specific refresh token from user's token set (for multi-device)
+    if (refreshToken) {
+      await this.tokenRepository.removeFromSet(`refresh:${userId}`, refreshToken)
+    }
 
     // Blacklist tokens if provided
     if (accessToken) {
-      const decoded = jwt.decode(accessToken) as any
-      const expiresIn = decoded.exp - Math.floor(Date.now() / 1000)
-      if (expiresIn > 0) {
-        await this.redisService.set(`blacklist:${accessToken}`, '1', expiresIn)
+      const decoded = jwt.decode(accessToken) as { exp: number } | null
+      if (decoded && decoded.exp) {
+        const expiresIn = decoded.exp - Math.floor(Date.now() / 1000)
+        if (expiresIn > 0) {
+          await this.tokenRepository.set(`blacklist:${accessToken}`, '1', expiresIn)
+        }
       }
     }
 
     if (refreshToken) {
-      const decoded = jwt.decode(refreshToken) as any
-      const expiresIn = decoded.exp - Math.floor(Date.now() / 1000)
-      if (expiresIn > 0) {
-        await this.redisService.set(`blacklist:${refreshToken}`, '1', expiresIn)
+      const decoded = jwt.decode(refreshToken) as { exp: number } | null
+      if (decoded && decoded.exp) {
+        const expiresIn = decoded.exp - Math.floor(Date.now() / 1000)
+        if (expiresIn > 0) {
+          await this.tokenRepository.set(`blacklist:${refreshToken}`, '1', expiresIn)
+        }
       }
     }
 
@@ -289,22 +296,16 @@ export class AuthService {
     name: string
     role: 'admin' | 'moderator' | 'user'
   }> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-      },
-    })
+    const user = await this.userRepository.findById(userId)
 
     if (!user) {
       throw new AppError('User not found', 404)
     }
 
     return {
-      ...user,
+      id: user.id,
+      email: user.email,
+      name: user.name,
       role: user.role.toLowerCase() as 'admin' | 'moderator' | 'user',
     }
   }

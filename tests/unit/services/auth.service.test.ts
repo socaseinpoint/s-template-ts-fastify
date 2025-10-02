@@ -3,26 +3,8 @@ import jwt from 'jsonwebtoken'
 import { Config } from '@/config'
 import { AppError } from '@/utils/errors'
 import { Role } from '@prisma/client'
-
-// Mock Prisma
-vi.mock('@/services/prisma.service', () => ({
-  default: {
-    user: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-    },
-  },
-  __esModule: true,
-}))
-
-// Mock Redis
-vi.mock('@/services/redis.service', () => ({
-  RedisService: vi.fn().mockImplementation(() => ({
-    get: vi.fn().mockResolvedValue(null),
-    set: vi.fn().mockResolvedValue('OK'),
-    del: vi.fn().mockResolvedValue(1),
-  })),
-}))
+import type { IUserRepository } from '@/repositories/user.repository'
+import type { ITokenRepository } from '@/repositories/token.repository'
 
 // Mock PasswordUtils
 vi.mock('@/utils/password', () => ({
@@ -40,10 +22,13 @@ vi.mock('@/utils/password', () => ({
     validateStrength: (password: string) => {
       const errors = []
       if (password.length < 8) errors.push('Password must be at least 8 characters long')
-      if (!/[A-Z]/.test(password)) errors.push('Password must contain at least one uppercase letter')
-      if (!/[a-z]/.test(password)) errors.push('Password must contain at least one lowercase letter')
+      if (!/[A-Z]/.test(password))
+        errors.push('Password must contain at least one uppercase letter')
+      if (!/[a-z]/.test(password))
+        errors.push('Password must contain at least one lowercase letter')
       if (!/[0-9]/.test(password)) errors.push('Password must contain at least one number')
-      if (!/[!@#$%^&*]/.test(password)) errors.push('Password must contain at least one special character')
+      if (!/[!@#$%^&*]/.test(password))
+        errors.push('Password must contain at least one special character')
       return { valid: errors.length === 0, errors }
     },
   },
@@ -52,11 +37,11 @@ vi.mock('@/utils/password', () => ({
 // Import after mocks
 import { AuthService } from '@/services/auth.service'
 import { PasswordUtils } from '@/utils/password'
-import prisma from '@/services/prisma.service'
 
 describe('AuthService', () => {
   let authService: AuthService
-  let mockRedisService: any
+  let mockUserRepository: IUserRepository
+  let mockTokenRepository: ITokenRepository
 
   const mockUsers = {
     admin: {
@@ -95,19 +80,34 @@ describe('AuthService', () => {
   }
 
   beforeEach(() => {
-    authService = new AuthService()
-    mockRedisService = authService['redisService']
-    
+    // Create mock repositories
+    mockUserRepository = {
+      findByEmail: vi.fn(),
+      findById: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      findMany: vi.fn(),
+    }
+
+    mockTokenRepository = {
+      set: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn().mockResolvedValue(null),
+      del: vi.fn().mockResolvedValue(undefined),
+      addToSet: vi.fn().mockResolvedValue(undefined),
+      getSet: vi.fn().mockResolvedValue([]),
+      removeFromSet: vi.fn().mockResolvedValue(undefined),
+    }
+
+    // Create AuthService with mocked dependencies
+    authService = new AuthService(mockUserRepository, mockTokenRepository)
+
     vi.clearAllMocks()
-    
-    mockRedisService.get.mockResolvedValue(null)
-    mockRedisService.set.mockResolvedValue('OK')
-    mockRedisService.del.mockResolvedValue(1)
   })
 
   describe('login', () => {
     it('should successfully login with valid credentials', async () => {
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUsers.admin)
+      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(mockUsers.admin)
 
       const result = await authService.login({
         email: 'admin@example.com',
@@ -117,24 +117,29 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('accessToken')
       expect(result).toHaveProperty('refreshToken')
       expect(result.user.role).toBe('admin')
+      expect(mockTokenRepository.addToSet).toHaveBeenCalled()
     })
 
     it('should throw error for invalid email', async () => {
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(null)
+      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(null)
 
-      await expect(authService.login({
-        email: 'invalid@example.com',
-        password: 'Admin123!',
-      })).rejects.toThrow('Invalid email or password')
+      await expect(
+        authService.login({
+          email: 'invalid@example.com',
+          password: 'Admin123!',
+        })
+      ).rejects.toThrow('Invalid email or password')
     })
 
     it('should throw error for invalid password', async () => {
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUsers.admin)
+      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(mockUsers.admin)
 
-      await expect(authService.login({
-        email: 'admin@example.com',
-        password: 'WrongPassword!',
-      })).rejects.toThrow('Invalid email or password')
+      await expect(
+        authService.login({
+          email: 'admin@example.com',
+          password: 'WrongPassword!',
+        })
+      ).rejects.toThrow('Invalid email or password')
     })
 
     it('should handle different user roles', async () => {
@@ -145,14 +150,24 @@ describe('AuthService', () => {
       ]
 
       for (const testCase of testCases) {
-        vi.mocked(prisma.user.findUnique).mockResolvedValue(testCase.user)
-        
+        vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(testCase.user)
+
         const result = await authService.login({
           email: testCase.user.email,
           password: testCase.password,
         })
         expect(result.user.role).toBe(testCase.role)
       }
+    })
+
+    it('should reject password longer than 72 characters', async () => {
+      const longPassword = 'A'.repeat(73) + '!'
+      await expect(
+        authService.login({
+          email: 'admin@example.com',
+          password: longPassword,
+        })
+      ).rejects.toThrow('Password too long')
     })
   })
 
@@ -170,8 +185,8 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       }
 
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(null)
-      vi.mocked(prisma.user.create).mockResolvedValue(newUser)
+      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(null)
+      vi.mocked(mockUserRepository.create).mockResolvedValue(newUser)
 
       const result = await authService.register({
         email: 'newuser@example.com',
@@ -181,27 +196,38 @@ describe('AuthService', () => {
 
       expect(result).toHaveProperty('accessToken')
       expect(result.user.email).toBe('newuser@example.com')
+      expect(mockTokenRepository.addToSet).toHaveBeenCalled()
     })
 
     it('should throw error for existing email', async () => {
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUsers.admin)
+      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(mockUsers.admin)
 
-      await expect(authService.register({
-        email: 'admin@example.com',
-        password: 'Password123!',
-        name: 'Test',
-      })).rejects.toThrow('User with this email already exists')
+      await expect(
+        authService.register({
+          email: 'admin@example.com',
+          password: 'Password123!',
+          name: 'Test',
+        })
+      ).rejects.toThrow('User with this email already exists')
     })
 
     it('should validate password strength', async () => {
-      const weakPasswords = ['short', 'nouppercase123!', 'NOLOWERCASE123!', 'NoNumbers!', 'NoSpecialChar123']
+      const weakPasswords = [
+        'short',
+        'nouppercase123!',
+        'NOLOWERCASE123!',
+        'NoNumbers!',
+        'NoSpecialChar123',
+      ]
 
       for (const password of weakPasswords) {
-        await expect(authService.register({
-          email: 'test@example.com',
-          password,
-          name: 'Test',
-        })).rejects.toThrow(AppError)
+        await expect(
+          authService.register({
+            email: 'test@example.com',
+            password,
+            name: 'Test',
+          })
+        ).rejects.toThrow(AppError)
       }
     })
 
@@ -218,16 +244,27 @@ describe('AuthService', () => {
         updatedAt: new Date(),
       }
 
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(null)
-      vi.mocked(prisma.user.create).mockResolvedValue(newUser)
+      vi.mocked(mockUserRepository.findByEmail).mockResolvedValue(null)
+      vi.mocked(mockUserRepository.create).mockResolvedValue(newUser)
 
       const result = await authService.register({
         email: 'strong@example.com',
         password: 'StrongPass123!',
         name: 'Strong User',
       })
-      
+
       expect(result).toHaveProperty('accessToken')
+    })
+
+    it('should reject password longer than 72 characters', async () => {
+      const longPassword = 'A'.repeat(73) + '!'
+      await expect(
+        authService.register({
+          email: 'test@example.com',
+          password: longPassword,
+          name: 'Test',
+        })
+      ).rejects.toThrow('Password too long')
     })
   })
 
@@ -276,10 +313,12 @@ describe('AuthService', () => {
         Config.JWT_SECRET,
         { expiresIn: '15m' }
       )
-      
-      mockRedisService.get.mockResolvedValueOnce('1')
 
-      await expect(authService.verifyToken(token, 'access')).rejects.toThrow('Token has been revoked')
+      vi.mocked(mockTokenRepository.get).mockResolvedValueOnce('1')
+
+      await expect(authService.verifyToken(token, 'access')).rejects.toThrow(
+        'Token has been revoked'
+      )
     })
   })
 
@@ -291,48 +330,67 @@ describe('AuthService', () => {
         { expiresIn: '7d' }
       )
 
-      mockRedisService.get
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(token)
+      vi.mocked(mockTokenRepository.get).mockResolvedValueOnce(null)
+      vi.mocked(mockTokenRepository.getSet).mockResolvedValueOnce([token])
 
       const result = await authService.refreshToken(token)
       expect(result).toHaveProperty('accessToken')
+      expect(mockTokenRepository.removeFromSet).toHaveBeenCalled()
+      expect(mockTokenRepository.addToSet).toHaveBeenCalled()
     })
 
     it('should reject invalid token', async () => {
       await expect(authService.refreshToken('invalid')).rejects.toThrow('Invalid token')
     })
 
-    it('should reject token not in Redis', async () => {
+    it('should reject token not in set', async () => {
       const token = jwt.sign(
         { id: '1', email: 'test@example.com', role: 'user', type: 'refresh' },
         Config.JWT_SECRET,
         { expiresIn: '7d' }
       )
 
-      mockRedisService.get.mockResolvedValue(null)
+      vi.mocked(mockTokenRepository.get).mockResolvedValue(null)
+      vi.mocked(mockTokenRepository.getSet).mockResolvedValue([])
 
       await expect(authService.refreshToken(token)).rejects.toThrow('Invalid refresh token')
     })
   })
 
   describe('logout', () => {
-    it('should logout user', async () => {
-      await expect(authService.logout('1')).resolves.not.toThrow()
-      expect(mockRedisService.del).toHaveBeenCalled()
+    it('should logout user with refresh token', async () => {
+      const refreshToken = jwt.sign(
+        { id: '1', email: 'test@example.com', role: 'user', type: 'refresh' },
+        Config.JWT_SECRET,
+        { expiresIn: '7d' }
+      )
+
+      await expect(authService.logout('1', undefined, refreshToken)).resolves.not.toThrow()
+      expect(mockTokenRepository.removeFromSet).toHaveBeenCalled()
+    })
+
+    it('should blacklist tokens if provided', async () => {
+      const token = jwt.sign(
+        { id: '1', email: 'test@example.com', role: 'user', type: 'access' },
+        Config.JWT_SECRET,
+        { expiresIn: '15m' }
+      )
+
+      await authService.logout('1', token)
+      expect(mockTokenRepository.set).toHaveBeenCalled()
     })
   })
 
   describe('getUserById', () => {
     it('should return user', async () => {
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUsers.admin)
+      vi.mocked(mockUserRepository.findById).mockResolvedValue(mockUsers.admin)
 
       const user = await authService.getUserById('1')
       expect(user.email).toBe('admin@example.com')
     })
 
     it('should throw for non-existent user', async () => {
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(null)
+      vi.mocked(mockUserRepository.findById).mockResolvedValue(null)
 
       await expect(authService.getUserById('999')).rejects.toThrow('User not found')
     })

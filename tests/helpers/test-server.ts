@@ -1,19 +1,17 @@
 import { FastifyInstance } from 'fastify'
-import fastifyInstance from '@/server'
+import { createApp } from '@/app'
 
 let server: FastifyInstance | null = null
 
 /**
  * Get or create a test server instance
- * Reuses the same instance for better performance
+ * Creates app without starting actual server
  */
 export async function getTestServer(): Promise<FastifyInstance> {
   if (!server) {
-    server = fastifyInstance
-    // Server should already be ready, but ensure it
-    if (!server.hasReqDecorator) {
-      await server.ready()
-    }
+    // Create app without starting server (no listen())
+    server = await createApp()
+    await server.ready()
   }
   return server
 }
@@ -29,8 +27,8 @@ export async function closeTestServer(): Promise<void> {
 }
 
 /**
- * Get the server instance directly (already initialized)
+ * Get the server instance directly
  */
-export function getServerInstance(): FastifyInstance {
-  return fastifyInstance
+export function getServerInstance(): FastifyInstance | null {
+  return server
 }

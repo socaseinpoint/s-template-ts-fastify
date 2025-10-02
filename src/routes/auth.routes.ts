@@ -1,9 +1,10 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { AuthService } from '@/services/auth.service'
 import { loginSchema, registerSchema, refreshSchema } from '@/schemas/auth.schemas'
+import { container } from '@/app'
 
 export default async function authRoutes(fastify: FastifyInstance) {
-  const authService = new AuthService()
+  // Get authService from DI container (singleton)
+  const authService = container.cradle.authService
 
   // Login endpoint
   fastify.post(
