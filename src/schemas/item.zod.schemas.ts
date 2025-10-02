@@ -24,7 +24,7 @@ export const itemSchema = z.object({
   quantity: z.number().min(0),
   status: itemStatusSchema,
   tags: z.array(z.string()).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   userId: z.string(),
   createdAt: z.string().or(z.date()),
   updatedAt: z.string().or(z.date()),
@@ -43,7 +43,7 @@ export const createItemDtoSchema = z.object({
   quantity: z.number().min(0).default(0),
   status: itemStatusSchema.default('available'),
   tags: z.array(z.string()).max(10).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
 export type CreateItemDto = z.infer<typeof createItemDtoSchema>
@@ -59,7 +59,7 @@ export const updateItemDtoSchema = z.object({
   quantity: z.number().min(0).optional(),
   status: itemStatusSchema.optional(),
   tags: z.array(z.string()).max(10).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
 export type UpdateItemDto = z.infer<typeof updateItemDtoSchema>

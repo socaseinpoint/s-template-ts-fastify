@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { Logger } from '@/utils/logger'
-import { DIContainer } from '@/container'
+import { DIContainer, disposeDIContainer } from '@/container'
 
 const logger = new Logger('GracefulShutdown')
 
@@ -26,22 +26,7 @@ export async function gracefulShutdown(signal: string, context: ShutdownContext)
 
     // 2. Close all services and resources via DI container
     if (context.container) {
-      logger.info('Disposing DI container and all services...')
-
-      // Manually disconnect Prisma before disposing container
-      try {
-        const prisma = context.container.cradle.prisma
-        if (prisma && typeof prisma.$disconnect === 'function') {
-          logger.info('Disconnecting Prisma client...')
-          await prisma.$disconnect()
-          logger.info('✅ Prisma client disconnected')
-        }
-      } catch (error) {
-        logger.warn('Failed to disconnect Prisma:', error)
-      }
-
-      await context.container.dispose()
-      logger.info('✅ DI container disposed')
+      await disposeDIContainer(context.container)
     }
 
     logger.info('✅ Graceful shutdown completed successfully')

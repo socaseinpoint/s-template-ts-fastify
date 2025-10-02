@@ -37,16 +37,16 @@ const envSchema = z.object({
   // Feature flags
   ENABLE_METRICS: z
     .string()
-    .transform(val => val === 'true')
-    .default('false'),
+    .default('false')
+    .transform(val => val === 'true'),
   ENABLE_HEALTH_CHECK: z
     .string()
-    .transform(val => val !== 'false')
-    .default('true'),
+    .default('true')
+    .transform(val => val !== 'false'),
   ENABLE_SWAGGER: z
     .string()
-    .transform(val => val !== 'false')
-    .default('true'),
+    .default('true')
+    .transform(val => val !== 'false'),
 
   // Rate limiting
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
@@ -103,6 +103,17 @@ export function getConfig(): z.infer<typeof envSchema> {
     configInstance = validateEnv()
   }
   return configInstance
+}
+
+/**
+ * Reset configuration instance (useful for testing)
+ * WARNING: Only use in test environments
+ */
+export function resetConfig(): void {
+  if (process.env.NODE_ENV !== 'test') {
+    console.warn('⚠️  resetConfig() should only be used in test environment')
+  }
+  configInstance = null
 }
 
 // Export Config for backward compatibility (uses getter internally)

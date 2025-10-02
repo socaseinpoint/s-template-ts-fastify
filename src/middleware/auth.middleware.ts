@@ -12,6 +12,8 @@ export interface AuthUser {
   role: UserRole
 }
 
+// Type safety: FastifyRequest.user is already declared in jwt.plugin.ts
+
 /**
  * Check if user has required role
  */
@@ -28,7 +30,7 @@ export function hasRole(userRole: UserRole, requiredRoles: UserRole[]): boolean 
  */
 export function requireRoles(roles: UserRole[]) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = (request as any).user as AuthUser | undefined
+    const user = request.user
 
     if (!user) {
       logger.warn('No user found in request')
@@ -70,7 +72,7 @@ export async function requireModerator(request: FastifyRequest, reply: FastifyRe
  * Middleware to check if user is authenticated (any role)
  */
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
-  const user = (request as any).user
+  const user = request.user
 
   if (!user) {
     return reply.code(401).send({

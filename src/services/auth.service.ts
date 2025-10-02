@@ -1,6 +1,6 @@
-import jwt from 'jsonwebtoken'
+import jwt, { type SignOptions } from 'jsonwebtoken'
 import { Logger } from '@/utils/logger'
-import { AppError, UnauthorizedError, ValidationError } from '@/utils/errors'
+import { UnauthorizedError, ValidationError } from '@/utils/errors'
 import { PasswordUtils } from '@/utils/password'
 import { Config } from '@/config'
 import { IUserRepository } from '@/repositories/user.repository'
@@ -54,17 +54,17 @@ export class AuthService {
       type: TOKEN_TYPES.REFRESH,
     }
 
-    const accessToken = jwt.sign(accessTokenPayload as Record<string, unknown>, Config.JWT_SECRET, {
+    const signOptions: SignOptions = {
       expiresIn: Config.JWT_ACCESS_EXPIRES_IN,
-    })
+    }
 
-    const refreshToken = jwt.sign(
-      refreshTokenPayload as Record<string, unknown>,
-      Config.JWT_SECRET,
-      {
-        expiresIn: Config.JWT_REFRESH_EXPIRES_IN,
-      }
-    )
+    const accessToken = jwt.sign(accessTokenPayload, Config.JWT_SECRET, signOptions)
+
+    const refreshSignOptions: SignOptions = {
+      expiresIn: Config.JWT_REFRESH_EXPIRES_IN,
+    }
+
+    const refreshToken = jwt.sign(refreshTokenPayload, Config.JWT_SECRET, refreshSignOptions)
 
     return { accessToken, refreshToken }
   }

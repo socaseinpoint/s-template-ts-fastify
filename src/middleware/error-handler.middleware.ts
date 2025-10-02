@@ -3,6 +3,11 @@ import { AppError } from '@/utils/errors'
 import { Logger } from '@/utils/logger'
 import { Config } from '@/config'
 import { ZodError } from 'zod'
+import {
+  PrismaClientKnownRequestError,
+  PrismaClientValidationError,
+  PrismaClientUnknownRequestError,
+} from '@prisma/client/runtime/library'
 
 const logger = new Logger('ErrorHandler')
 
@@ -77,7 +82,7 @@ export function errorHandler(
     return reply.code(400).send({
       error: 'Validation failed',
       code: 400,
-      details: error.issues.map((err: any) => ({
+      details: error.issues.map(err => ({
         path: err.path.join('.'),
         message: err.message,
       })),
@@ -101,11 +106,60 @@ export function errorHandler(
     })
   }
 
-  // Handle Prisma errors
-  if (error.constructor.name.includes('Prisma')) {
-    logger.error('Database error', error)
+  // Handle Prisma errors with specific error codes
+  if (error instanceof PrismaClientKnownRequestError) {
+    logger.error('Prisma known error', { code: error.code, meta: error.meta })
+
+    // P2002: Unique constraint violation
+    if (error.code === 'P2002') {
+      const target = error.meta?.target as string[] | undefined
+      const field = target ? target.join(', ') : 'field'
+      return reply.code(409).send({
+        error: `A resource with this ${field} already exists`,
+        code: 409,
+        ...(Config.NODE_ENV === 'development' && { details: error.message }),
+      })
+    }
+
+    // P2025: Record not found
+    if (error.code === 'P2025') {
+      return reply.code(404).send({
+        error: 'Resource not found',
+        code: 404,
+      })
+    }
+
+    // P2003: Foreign key constraint failed
+    if (error.code === 'P2003') {
+      return reply.code(400).send({
+        error: 'Invalid reference to related resource',
+        code: 400,
+      })
+    }
+
+    // Generic Prisma error
     return reply.code(500).send({
-      error: 'Database error occurred',
+      error: 'Database operation failed',
+      code: 500,
+      ...(Config.NODE_ENV === 'development' && { details: error.message }),
+    })
+  }
+
+  // Handle Prisma validation errors
+  if (error instanceof PrismaClientValidationError) {
+    logger.error('Prisma validation error', error)
+    return reply.code(400).send({
+      error: 'Invalid data provided',
+      code: 400,
+      ...(Config.NODE_ENV === 'development' && { details: error.message }),
+    })
+  }
+
+  // Handle unknown Prisma errors
+  if (error instanceof PrismaClientUnknownRequestError) {
+    logger.error('Prisma unknown error', error)
+    return reply.code(500).send({
+      error: 'An unexpected database error occurred',
       code: 500,
       ...(Config.NODE_ENV === 'development' && { details: error.message }),
     })

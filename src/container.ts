@@ -119,5 +119,27 @@ export async function createDIContainer(
   return container
 }
 
+/**
+ * Dispose DI container and cleanup resources
+ * IMPORTANT: Call this before shutting down the application
+ */
+export async function disposeDIContainer(container: AwilixContainer<ICradle>): Promise<void> {
+  logger.info('Disposing DI container...')
+
+  try {
+    const prisma = container.cradle.prisma
+    if (prisma && typeof prisma.$disconnect === 'function') {
+      await prisma.$disconnect()
+      logger.info('✅ Prisma client disconnected')
+    }
+  } catch (error) {
+    logger.error('Error disconnecting Prisma', error)
+  }
+
+  // Dispose container
+  await container.dispose()
+  logger.info('✅ DI container disposed')
+}
+
 // Export type for container
 export type DIContainer = AwilixContainer<ICradle>

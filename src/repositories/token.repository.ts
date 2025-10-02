@@ -66,6 +66,7 @@ export class TokenRepository implements ITokenRepository {
 
   /**
    * Add value to a set with expiration
+   * SECURITY: Does NOT extend TTL for existing sets to prevent token lifetime extension
    */
   async addToSet(
     key: string,
@@ -79,8 +80,8 @@ export class TokenRepository implements ITokenRepository {
       this.storage.set(key, { value: new Set([value]), expiresAt })
     } else if (data.value instanceof Set) {
       data.value.add(value)
-      // Update expiration
-      data.expiresAt = expiresAt
+      // SECURITY FIX: Do NOT update expiresAt for existing sets
+      // This prevents extending token lifetime with new logins
     } else {
       // Replace non-Set value with Set
       this.storage.set(key, { value: new Set([value]), expiresAt })
