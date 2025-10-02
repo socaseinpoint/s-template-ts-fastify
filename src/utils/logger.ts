@@ -49,15 +49,21 @@ export class Logger {
     }
   }
 
-  warn(message: string): void {
+  warn(message: string, data?: unknown): void {
     if (this.logLevel >= LogLevel.WARN) {
       console.warn(this.formatMessage('WARN', message))
+      if (data) {
+        console.warn(`  Data: ${JSON.stringify(data)}`)
+      }
     }
   }
 
-  info(message: string): void {
+  info(message: string, data?: unknown): void {
     if (this.logLevel >= LogLevel.INFO) {
       console.info(this.formatMessage('INFO', message))
+      if (data) {
+        console.info(`  Data: ${JSON.stringify(data)}`)
+      }
     }
   }
 

@@ -1,21 +1,17 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { userSchema, updateUserSchema } from '@/schemas/user.schemas'
-import { requireAuth, requireAdmin } from '@/middleware/auth.middleware'
-import { getContainer } from '@/app'
+import { UserRole } from '@/constants'
+import { authenticateMiddleware, authorizeRoles } from '@/middleware/authenticate.middleware'
 
 export default async function userRoutes(fastify: FastifyInstance) {
-  // Get userService from DI container (singleton)
-  const container = getContainer()
-  if (!container) {
-    throw new Error('DI Container not initialized')
-  }
-  const userService = container.cradle.userService
+  // Get userService from DI container via fastify decorator
+  const userService = fastify.diContainer.cradle.userService
 
   // Get all users - admin only
   fastify.get(
     '/',
     {
-      preHandler: requireAdmin,
+      onRequest: [authorizeRoles(UserRole.ADMIN)],
       schema: {
         description: 'Get all users (requires admin role)',
         tags: ['Users'],
@@ -45,20 +41,13 @@ export default async function userRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      try {
-        const {
-          page = 1,
-          limit = 10,
-          search,
-        } = request.query as { page?: number; limit?: number; search?: string }
-        const result = await userService.getAllUsers({ page, limit, search })
-        return reply.send(result)
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to fetch users',
-          code: 500,
-        })
-      }
+      const {
+        page = 1,
+        limit = 10,
+        search,
+      } = request.query as { page?: number; limit?: number; search?: string }
+      const result = await userService.getAllUsers({ page, limit, search })
+      return reply.send(result)
     }
   )
 
@@ -66,7 +55,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.get(
     '/:id',
     {
-      preHandler: requireAuth,
+      onRequest: [authenticateMiddleware],
       schema: {
         description: 'Get user by ID (requires authentication)',
         tags: ['Users'],
@@ -91,32 +80,19 @@ export default async function userRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      try {
-        const currentUser = (request as any).user
-        const { id } = request.params as { id: string }
+      const currentUser = request.user!
+      const { id } = request.params as { id: string }
 
-        // Users can only get their own info unless they're admin
-        if (currentUser.role !== 'admin' && currentUser.id !== id) {
-          return reply.code(403).send({
-            error: 'You can only access your own information',
-            code: 403,
-          })
-        }
-
-        const user = await userService.getUserById(id)
-        if (!user) {
-          return reply.code(404).send({
-            error: 'User not found',
-            code: 404,
-          })
-        }
-        return reply.send(user)
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to fetch user',
-          code: 500,
+      // Users can only get their own info unless they're admin
+      if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
+        return reply.code(403).send({
+          error: 'You can only access your own information',
+          code: 403,
         })
       }
+
+      const user = await userService.getUserById(id)
+      return reply.send(user)
     }
   )
 
@@ -124,7 +100,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.put(
     '/:id',
     {
-      preHandler: requireAuth,
+      onRequest: [authenticateMiddleware],
       schema: {
         description: 'Update user (requires authentication)',
         tags: ['Users'],
@@ -150,46 +126,33 @@ export default async function userRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      try {
-        const currentUser = (request as any).user
-        const { id } = request.params as { id: string }
-        const body = request.body as {
-          name?: string
-          phone?: string
-          role?: string
-          isActive?: boolean
-        }
+      const currentUser = request.user!
+      const { id } = request.params as { id: string }
+      const body = request.body as {
+        name?: string
+        phone?: string
+        role?: string
+        isActive?: boolean
+      }
 
-        // Users can only update themselves, admins can update anyone
-        if (currentUser.role !== 'admin' && currentUser.id !== id) {
-          return reply.code(403).send({
-            error: 'You can only update your own information',
-            code: 403,
-          })
-        }
-
-        // Non-admins cannot change roles or active status
-        if (currentUser.role !== 'admin' && (body.role || body.isActive !== undefined)) {
-          return reply.code(403).send({
-            error: 'Only admins can change role or active status',
-            code: 403,
-          })
-        }
-
-        const user = await userService.updateUser(id, body)
-        if (!user) {
-          return reply.code(404).send({
-            error: 'User not found',
-            code: 404,
-          })
-        }
-        return reply.send(user)
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to update user',
-          code: 500,
+      // Users can only update themselves, admins can update anyone
+      if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
+        return reply.code(403).send({
+          error: 'You can only update your own information',
+          code: 403,
         })
       }
+
+      // Non-admins cannot change roles or active status
+      if (currentUser.role !== UserRole.ADMIN && (body.role || body.isActive !== undefined)) {
+        return reply.code(403).send({
+          error: 'Only admins can change role or active status',
+          code: 403,
+        })
+      }
+
+      const user = await userService.updateUser(id, body)
+      return reply.send(user)
     }
   )
 
@@ -197,7 +160,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.delete(
     '/:id',
     {
-      preHandler: requireAdmin,
+      onRequest: [authorizeRoles(UserRole.ADMIN)],
       schema: {
         description: 'Delete user (requires admin role)',
         tags: ['Users'],
@@ -227,22 +190,15 @@ export default async function userRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      try {
-        const { id } = request.params as { id: string }
-        const deleted = await userService.deleteUser(id)
-        if (!deleted) {
-          return reply.code(404).send({
-            error: 'User not found',
-            code: 404,
-          })
-        }
-        return reply.send({ message: 'User deleted successfully' })
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to delete user',
-          code: 500,
+      const { id } = request.params as { id: string }
+      const deleted = await userService.deleteUser(id)
+      if (!deleted) {
+        return reply.code(404).send({
+          error: 'User not found',
+          code: 404,
         })
       }
+      return reply.send({ message: 'User deleted successfully' })
     }
   )
 }

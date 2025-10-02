@@ -15,6 +15,26 @@ interface ErrorResponse {
 }
 
 /**
+ * Sanitize request body to remove sensitive data before logging
+ */
+function sanitizeBody(body: unknown): unknown {
+  if (!body || typeof body !== 'object') {
+    return body
+  }
+
+  const sanitized = { ...body } as Record<string, unknown>
+  const sensitiveFields = ['password', 'token', 'refreshToken', 'accessToken', 'secret', 'apiKey']
+
+  for (const field of sensitiveFields) {
+    if (field in sanitized) {
+      sanitized[field] = '[REDACTED]'
+    }
+  }
+
+  return sanitized
+}
+
+/**
  * Centralized error handler for Fastify
  * Handles all errors in one place instead of duplicating try-catch everywhere
  */
@@ -23,11 +43,13 @@ export function errorHandler(
   request: FastifyRequest,
   reply: FastifyReply
 ): FastifyReply {
-  // Log error details
+  // Log error details with sanitized body
   logger.error(`Error on ${request.method} ${request.url}`, {
     error: error.message,
     stack: error.stack,
-    body: request.body,
+    body: sanitizeBody(request.body),
+    correlationId: (request as unknown as { correlationId?: string }).correlationId,
+    userId: request.user?.id,
   })
 
   // Handle known AppError instances

@@ -1,15 +1,11 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { loginSchema, registerSchema, refreshSchema } from '@/schemas/auth.schemas'
-import { getContainer } from '@/app'
 import { RATE_LIMITS } from '@/constants'
+import { authenticateMiddleware } from '@/middleware/authenticate.middleware'
 
 export default async function authRoutes(fastify: FastifyInstance) {
-  // Get authService from DI container (singleton)
-  const container = getContainer()
-  if (!container) {
-    throw new Error('DI Container not initialized')
-  }
-  const authService = container.cradle.authService
+  // Get authService from DI container via fastify decorator
+  const authService = fastify.diContainer.cradle.authService
 
   // Login endpoint with stricter rate limiting
   fastify.post(
@@ -32,8 +28,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
       },
       config: {
         rateLimit: {
-          max: RATE_LIMITS.AUTH.MAX,
-          timeWindow: RATE_LIMITS.AUTH.TIMEWINDOW,
+          max: RATE_LIMITS.AUTH_LOGIN.MAX,
+          timeWindow: RATE_LIMITS.AUTH_LOGIN.TIMEWINDOW,
+          ban: RATE_LIMITS.AUTH_LOGIN.BAN,
         },
       },
     },
@@ -68,8 +65,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
       },
       config: {
         rateLimit: {
-          max: RATE_LIMITS.AUTH.MAX,
-          timeWindow: RATE_LIMITS.AUTH.TIMEWINDOW,
+          max: RATE_LIMITS.AUTH_REGISTER.MAX,
+          timeWindow: RATE_LIMITS.AUTH_REGISTER.TIMEWINDOW,
+          ban: RATE_LIMITS.AUTH_REGISTER.BAN,
         },
       },
     },
@@ -103,6 +101,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
           },
         },
       },
+      config: {
+        rateLimit: {
+          max: RATE_LIMITS.AUTH_REFRESH.MAX,
+          timeWindow: RATE_LIMITS.AUTH_REFRESH.TIMEWINDOW,
+          ban: RATE_LIMITS.AUTH_REFRESH.BAN,
+        },
+      },
     },
     async (request: FastifyRequest<{ Body: { refreshToken: string } }>, reply: FastifyReply) => {
       const result = await authService.refreshToken(request.body.refreshToken)
@@ -110,26 +115,27 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
   )
 
-  // Logout endpoint
+  // Logout endpoint (requires authentication)
   fastify.post(
     '/logout',
     {
+      onRequest: [authenticateMiddleware],
       schema: {
         description: 'User logout',
         tags: ['Auth'],
-        headers: {
-          type: 'object',
-          properties: {
-            authorization: { type: 'string', description: 'Bearer token' },
-          },
-          required: ['authorization'],
-        },
         security: [{ Bearer: [] }],
         response: {
           200: {
             type: 'object',
             properties: {
               message: { type: 'string' },
+            },
+          },
+          401: {
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+              code: { type: 'number' },
             },
           },
         },
@@ -140,8 +146,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       const authorization = request.headers.authorization
       const accessToken = authorization?.substring(7) // Remove 'Bearer ' prefix
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const user = (request as any).user
+      const user = request.user!
       await authService.logout(user.id, accessToken)
       return reply.send({ message: 'Logged out successfully' })
     }

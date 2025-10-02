@@ -1,21 +1,17 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { itemSchema, createItemSchema, updateItemSchema } from '@/schemas/item.schemas'
-import { requireAuth, requireModerator, requireAdmin } from '@/middleware/auth.middleware'
-import { getContainer } from '@/app'
+import { UserRole } from '@/constants'
+import { authenticateMiddleware, authorizeRoles } from '@/middleware/authenticate.middleware'
 
 export default async function itemRoutes(fastify: FastifyInstance) {
-  // Get itemService from DI container (singleton)
-  const container = getContainer()
-  if (!container) {
-    throw new Error('DI Container not initialized')
-  }
-  const itemService = container.cradle.itemService
+  // Get itemService from DI container via fastify decorator
+  const itemService = fastify.diContainer.cradle.itemService
 
   // Get all items - accessible by all authenticated users
   fastify.get(
     '/',
     {
-      preHandler: requireAuth,
+      onRequest: [authenticateMiddleware],
       schema: {
         description: 'Get all items with pagination and filtering (requires authentication)',
         tags: ['Items'],
@@ -86,7 +82,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   fastify.get(
     '/:id',
     {
-      preHandler: requireAuth,
+      onRequest: [authenticateMiddleware],
       schema: {
         description: 'Get item by ID (requires authentication)',
         tags: ['Items'],
@@ -133,7 +129,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   fastify.post(
     '/',
     {
-      preHandler: requireModerator,
+      onRequest: [authorizeRoles(UserRole.MODERATOR, UserRole.ADMIN)],
       schema: {
         description: 'Create a new item (requires moderator or admin role)',
         tags: ['Items'],
@@ -186,7 +182,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   fastify.put(
     '/:id',
     {
-      preHandler: requireModerator,
+      onRequest: [authorizeRoles(UserRole.MODERATOR, UserRole.ADMIN)],
       schema: {
         description: 'Update an existing item (requires moderator or admin role)',
         tags: ['Items'],
@@ -249,7 +245,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   fastify.delete(
     '/:id',
     {
-      preHandler: requireAdmin,
+      onRequest: [authorizeRoles(UserRole.ADMIN)],
       schema: {
         description: 'Delete an item (requires admin role)',
         tags: ['Items'],
@@ -301,7 +297,7 @@ export default async function itemRoutes(fastify: FastifyInstance) {
   fastify.post(
     '/batch-delete',
     {
-      preHandler: requireAdmin,
+      onRequest: [authorizeRoles(UserRole.ADMIN)],
       schema: {
         description: 'Delete multiple items (requires admin role)',
         tags: ['Items'],

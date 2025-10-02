@@ -10,10 +10,11 @@ import { registerRoutes } from '@/routes'
 import { Logger } from '@/utils/logger'
 import { Config } from '@/config'
 import { jwtPlugin } from '@/plugins/jwt.plugin'
+import { requestContextPlugin } from '@/plugins/request-context.plugin'
 import { createDIContainer, DIContainer } from '@/container'
 import { errorHandler } from '@/middleware/error-handler.middleware'
 import { ServiceRegistry, getServiceRegistry } from '@/services/service-registry.service'
-import { PUBLIC_ROUTES, AUTH, RATE_LIMITS, ROUTES, ServiceStatus } from '@/constants'
+import { RATE_LIMITS, ROUTES, ServiceStatus } from '@/constants'
 
 const logger = new Logger('App')
 
@@ -51,11 +52,14 @@ export async function createApp(): Promise<FastifyInstance> {
   const container = createDIContainer()
   serviceRegistry.container = container
 
-  // Note: Fastify instance is not registered in container to avoid circular dependency
-  // If needed, access it through the routes' closure scope
+  // Decorate fastify with container for access in plugins/routes
+  fastify.decorate('diContainer', container)
 
   // Register centralized error handler
   fastify.setErrorHandler(errorHandler)
+
+  // Register request context plugin (correlation ID, tracing)
+  await fastify.register(requestContextPlugin)
 
   // Security: Helmet
   await fastify.register(fastifyHelmet, {
@@ -82,10 +86,10 @@ export async function createApp(): Promise<FastifyInstance> {
   }
 
   // Register form body parser
-  fastify.register(fastifyFormbody)
+  await fastify.register(fastifyFormbody)
 
-  // Register JWT plugin
-  fastify.register(jwtPlugin)
+  // Register JWT plugin (with auth decorators)
+  await fastify.register(jwtPlugin)
 
   // Register Swagger
   if (Config.ENABLE_SWAGGER) {
@@ -102,70 +106,12 @@ export async function createApp(): Promise<FastifyInstance> {
   }
 
   // Enable CORS
-  fastify.register(fastifyCors, {
+  await fastify.register(fastifyCors, {
     origin: getCorsOrigin(),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID', 'X-Request-ID'],
+    exposedHeaders: ['X-Correlation-ID', 'X-Request-ID'],
     credentials: true,
-  })
-
-  // Global auth middleware for protected routes
-  fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-    // Skip auth for public endpoints
-    const isPublicRoute = PUBLIC_ROUTES.some(
-      route => request.url.startsWith(route) || request.url === ROUTES.ROOT
-    )
-
-    if (isPublicRoute) {
-      return
-    }
-
-    // Check authorization header
-    const authorization = request.headers[AUTH.HEADER_NAME]
-
-    if (!authorization) {
-      return reply.code(401).send({
-        error: 'Authorization header is required',
-        code: 401,
-      })
-    }
-
-    // Validate token format
-    if (!authorization.startsWith(AUTH.BEARER_PREFIX)) {
-      return reply.code(401).send({
-        error: 'Invalid token format. Use: Bearer <token>',
-        code: 401,
-      })
-    }
-
-    // Extract and validate token using AuthService from DI container
-    const token = authorization.substring(AUTH.BEARER_PREFIX.length)
-
-    try {
-      const authService = container.cradle.authService
-      const payload = await authService.verifyToken(token, 'access')
-
-      // Add user to request
-      request.user = {
-        id: payload.id,
-        email: payload.email,
-        role: payload.role,
-      }
-    } catch (error) {
-      logger.error('Auth middleware error', error)
-
-      if (error instanceof Error && error.message.includes('expired')) {
-        return reply.code(401).send({
-          error: 'Token expired',
-          code: 401,
-        })
-      }
-
-      return reply.code(401).send({
-        error: 'Invalid or expired token',
-        code: 401,
-      })
-    }
   })
 
   // Health check endpoint with live checks
@@ -257,4 +203,11 @@ export function getAppServiceRegistry(): ServiceRegistry {
  */
 export function getContainer(): DIContainer | undefined {
   return serviceRegistry?.container
+}
+
+// Type declaration for Fastify decorator
+declare module 'fastify' {
+  interface FastifyInstance {
+    diContainer: DIContainer
+  }
 }

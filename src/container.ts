@@ -27,18 +27,29 @@ export interface ICradle {
 }
 
 /**
- * Create and configure the DI container
+ * Create and configure the DI container with proper lifecycle management
  */
 export function createDIContainer() {
   const container = createContainer<ICradle>({
     injectionMode: InjectionMode.PROXY,
   })
 
-  // Register Prisma as singleton
-  const prismaClient = new PrismaClient()
-
+  // Register Prisma as singleton with proper disposal
   container.register({
-    prisma: asValue(prismaClient),
+    prisma: asFunction(
+      () => {
+        const client = new PrismaClient({
+          log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+        })
+        return client
+      },
+      {
+        lifetime: Lifetime.SINGLETON,
+        dispose: async client => {
+          await client.$disconnect()
+        },
+      }
+    ),
   })
 
   // Register repositories as singletons with explicit dependencies

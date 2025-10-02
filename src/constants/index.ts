@@ -20,14 +20,26 @@ export const AUTH = {
 
 // Rate Limiting
 export const RATE_LIMITS = {
-  AUTH: {
-    MAX: process.env.NODE_ENV === 'test' ? 1000 : 5, // Much higher in tests
-    TIMEWINDOW: 60000, // 1 minute
-    BAN: process.env.NODE_ENV === 'test' ? 100 : 3, // Higher ban threshold in tests
-  },
+  // Global rate limit
   GLOBAL: {
     MAX: process.env.NODE_ENV === 'test' ? 10000 : 100,
-    TIMEWINDOW: 60000,
+    TIMEWINDOW: 60000, // 1 minute
+    BAN: process.env.NODE_ENV === 'test' ? 100 : 5,
+  },
+  // Auth endpoints - more strict
+  AUTH_LOGIN: {
+    MAX: process.env.NODE_ENV === 'test' ? 1000 : 5, // 5 attempts per 15 minutes
+    TIMEWINDOW: 15 * 60000, // 15 minutes
+    BAN: process.env.NODE_ENV === 'test' ? 100 : 3, // Ban after 3 violations
+  },
+  AUTH_REGISTER: {
+    MAX: process.env.NODE_ENV === 'test' ? 1000 : 3, // 3 registrations per hour per IP
+    TIMEWINDOW: 60 * 60000, // 1 hour
+    BAN: process.env.NODE_ENV === 'test' ? 100 : 2,
+  },
+  AUTH_REFRESH: {
+    MAX: process.env.NODE_ENV === 'test' ? 1000 : 10, // 10 refreshes per hour
+    TIMEWINDOW: 60 * 60000, // 1 hour
     BAN: process.env.NODE_ENV === 'test' ? 100 : 5,
   },
 } as const
