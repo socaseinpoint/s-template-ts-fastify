@@ -23,23 +23,19 @@ export class RedisService {
       const net = require('net')
       const url = new URL(Config.REDIS_URL)
       const socket = new net.Socket()
-      
-      return new Promise((resolve) => {
+
+      return new Promise(resolve => {
         const timeout = setTimeout(() => {
           socket.destroy()
           resolve(false)
         }, 3000)
-        
-        socket.connect(
-          parseInt(url.port || '6379'),
-          url.hostname,
-          () => {
-            clearTimeout(timeout)
-            socket.destroy()
-            resolve(true)
-          }
-        )
-        
+
+        socket.connect(parseInt(url.port || '6379'), url.hostname, () => {
+          clearTimeout(timeout)
+          socket.destroy()
+          resolve(true)
+        })
+
         socket.on('error', () => {
           clearTimeout(timeout)
           socket.destroy()
@@ -54,7 +50,7 @@ export class RedisService {
 
   async get(key: string): Promise<any> {
     this.logger.debug(`Getting key: ${key}`)
-    
+
     const item = this.cache.get(key)
     if (!item) {
       return null
@@ -71,12 +67,12 @@ export class RedisService {
 
   async set(key: string, value: any, ttl?: number): Promise<void> {
     this.logger.debug(`Setting key: ${key}`)
-    
+
     const item = {
       value,
-      expiry: ttl ? Date.now() + (ttl * 1000) : undefined,
+      expiry: ttl ? Date.now() + ttl * 1000 : undefined,
     }
-    
+
     this.cache.set(key, item)
   }
 
@@ -103,7 +99,7 @@ export class RedisService {
   async expire(key: string, ttl: number): Promise<void> {
     const item = this.cache.get(key)
     if (item) {
-      item.expiry = Date.now() + (ttl * 1000)
+      item.expiry = Date.now() + ttl * 1000
       this.cache.set(key, item)
     }
   }

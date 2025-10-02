@@ -1,10 +1,13 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from 'vite'
 import path from 'path'
+import tsconfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
+  plugins: [tsconfigPaths()],
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['dotenv/config'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -14,6 +17,7 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.spec.ts',
         '**/*.config.ts',
+        '**/*.config.mts',
         '**/index.ts',
       ],
     },

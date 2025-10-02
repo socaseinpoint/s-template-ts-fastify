@@ -15,7 +15,11 @@ export const Config = {
   
   // API Keys
   API_KEY: process.env.API_KEY || '',
-  JWT_SECRET: process.env.JWT_SECRET || 'your-secret-key',
+  
+  // JWT Configuration
+  JWT_SECRET: process.env.JWT_SECRET || 'your-secret-key-change-this-in-production',
+  JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+  JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   
   // Service specific configuration
   SERVICE_NAME: process.env.SERVICE_NAME || 'fastify-service',

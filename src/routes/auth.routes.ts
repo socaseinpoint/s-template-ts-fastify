@@ -119,6 +119,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
       schema: {
         description: 'User logout',
         tags: ['Auth'],
+        headers: {
+          type: 'object',
+          properties: {
+            authorization: { type: 'string', description: 'Bearer token' },
+          },
+          required: ['authorization'],
+        },
         security: [{ Bearer: [] }],
         response: {
           200: {
@@ -132,8 +139,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
+        // Extract tokens from request
+        const authorization = request.headers.authorization
+        const accessToken = authorization?.substring(7) // Remove 'Bearer ' prefix
+
         const user = (request as any).user
-        await authService.logout(user.id)
+        await authService.logout(user.id, accessToken)
         return reply.send({ message: 'Logged out successfully' })
       } catch (error) {
         return reply.code(500).send({

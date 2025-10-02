@@ -14,6 +14,8 @@ import { Logger } from '@/utils/logger'
 import { Config } from '@/config'
 import { DatabaseService } from '@/services/database.service'
 import { RedisService } from '@/services/redis.service'
+import { jwtPlugin } from '@/plugins/jwt.plugin'
+import { AuthService } from '@/services/auth.service'
 
 const logger = new Logger('Server')
 
@@ -43,6 +45,9 @@ let isPostgresAvailable = false
 // Register form body parser
 fastify.register(fastifyFormbody)
 
+// Register JWT plugin
+fastify.register(jwtPlugin)
+
 // Register Swagger
 fastify.register(fastifySwagger, swaggerConfig)
 fastify.register(fastifySwaggerUi, swaggerUiConfig)
@@ -63,7 +68,7 @@ fastify.register(fastifyCors, {
   credentials: true,
 })
 
-// Auth middleware
+// Global auth middleware for protected routes
 fastify.addHook('preHandler', async (request, reply) => {
   // Skip auth for public endpoints
   const publicRoutes = [
@@ -102,30 +107,32 @@ fastify.addHook('preHandler', async (request, reply) => {
     })
   }
 
-  // Extract and validate token
+  // Extract and validate token using JWT
   const token = authorization.substring(7)
 
   try {
-    // Here you would validate the token
-    // For now, we'll just check if it exists
-    if (!token || token === 'invalid') {
+    const authService = new AuthService()
+    const payload = await authService.verifyToken(token, 'access')
+
+    // Add user to request
+    request.user = {
+      id: payload.id,
+      email: payload.email,
+      role: payload.role,
+    }
+  } catch (error) {
+    logger.error('Auth middleware error', error)
+
+    if (error instanceof Error && error.message.includes('expired')) {
       return reply.code(401).send({
-        error: 'Invalid token',
+        error: 'Token expired',
         code: 401,
       })
     }
 
-    // Add user to request (mock user for now)
-    ;(request as any).user = {
-      id: '1',
-      email: 'user@example.com',
-      role: 'user',
-    }
-  } catch (error) {
-    logger.error('Auth middleware error', error)
-    return reply.code(500).send({
-      error: 'Internal server error',
-      code: 500,
+    return reply.code(401).send({
+      error: 'Invalid or expired token',
+      code: 401,
     })
   }
 })

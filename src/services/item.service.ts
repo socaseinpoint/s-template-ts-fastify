@@ -112,10 +112,10 @@ export class ItemService {
       totalPages: number
     }
   }> {
-    const { 
-      page = 1, 
-      limit = 10, 
-      sortBy = 'createdAt', 
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
       sortOrder = 'desc',
       search,
       category,
@@ -128,9 +128,10 @@ export class ItemService {
     // Apply filters
     if (search) {
       const searchLower = search.toLowerCase()
-      items = items.filter(item => 
-        item.name.toLowerCase().includes(searchLower) ||
-        item.description?.toLowerCase().includes(searchLower)
+      items = items.filter(
+        item =>
+          item.name.toLowerCase().includes(searchLower) ||
+          item.description?.toLowerCase().includes(searchLower)
       )
     }
 
@@ -142,7 +143,7 @@ export class ItemService {
     items.sort((a, b) => {
       const aVal = a[sortBy as keyof Item] as any
       const bVal = b[sortBy as keyof Item] as any
-      
+
       if (sortOrder === 'asc') {
         return aVal > bVal ? 1 : -1
       } else {
@@ -189,7 +190,7 @@ export class ItemService {
 
   async updateItem(id: string, dto: UpdateItemDto): Promise<Item | null> {
     this.logger.info(`Updating item with id: ${id}`)
-    
+
     const item = this.items.get(id)
     if (!item) {
       return null
@@ -212,14 +213,14 @@ export class ItemService {
 
   async batchDelete(ids: string[]): Promise<number> {
     this.logger.info(`Batch deleting ${ids.length} items`)
-    
+
     let deletedCount = 0
     for (const id of ids) {
       if (this.items.delete(id)) {
         deletedCount++
       }
     }
-    
+
     return deletedCount
   }
 }

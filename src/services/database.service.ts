@@ -16,11 +16,11 @@ export class DatabaseService {
 
     try {
       this.logger.info('Connecting to database...')
-      
+
       // In real implementation, you would use Prisma or another ORM
       // For now, we'll simulate a connection
       await this.simulateConnection()
-      
+
       this.isConnected = true
       this.logger.info('Database connected successfully')
     } catch (error) {
