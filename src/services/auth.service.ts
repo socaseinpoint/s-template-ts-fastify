@@ -1,41 +1,13 @@
 import jwt from 'jsonwebtoken'
 import { Logger } from '@/utils/logger'
-import { AppError } from '@/utils/errors'
+import { AppError, UnauthorizedError, ValidationError } from '@/utils/errors'
 import { PasswordUtils } from '@/utils/password'
 import { Config } from '@/config'
 import { IUserRepository } from '@/repositories/user.repository'
 import { ITokenRepository } from '@/repositories/token.repository'
 import { Role } from '@prisma/client'
-
-interface LoginDto {
-  email: string
-  password: string
-}
-
-interface RegisterDto {
-  email: string
-  password: string
-  name: string
-  phone?: string
-}
-
-interface AuthResponse {
-  accessToken: string
-  refreshToken: string
-  user: {
-    id: string
-    email: string
-    name: string
-    role: 'admin' | 'moderator' | 'user'
-  }
-}
-
-interface TokenPayload {
-  id: string
-  email: string
-  role: 'admin' | 'moderator' | 'user'
-  type: 'access' | 'refresh'
-}
+import { UserRole, TOKEN_TYPES } from '@/constants'
+import { LoginDto, RegisterDto, AuthResponse, TokenPayload } from '@/types'
 
 export class AuthService {
   private logger: Logger
@@ -48,34 +20,46 @@ export class AuthService {
   }
 
   /**
+   * Convert Prisma Role to UserRole
+   */
+  private convertRole(role: Role): UserRole {
+    const roleMap: Record<Role, UserRole> = {
+      [Role.ADMIN]: UserRole.ADMIN,
+      [Role.MODERATOR]: UserRole.MODERATOR,
+      [Role.USER]: UserRole.USER,
+    }
+    return roleMap[role] || UserRole.USER
+  }
+
+  /**
    * Generate JWT tokens
    */
-  private generateTokens(user: {
-    id: string
-    email: string
-    role: 'admin' | 'moderator' | 'user'
-  }) {
+  private generateTokens(user: { id: string; email: string; role: UserRole }) {
     const accessTokenPayload: TokenPayload = {
       id: user.id,
       email: user.email,
       role: user.role,
-      type: 'access',
+      type: TOKEN_TYPES.ACCESS,
     }
 
     const refreshTokenPayload: TokenPayload = {
       id: user.id,
       email: user.email,
       role: user.role,
-      type: 'refresh',
+      type: TOKEN_TYPES.REFRESH,
     }
 
-    const accessToken = jwt.sign(accessTokenPayload, Config.JWT_SECRET, {
-      expiresIn: Config.JWT_ACCESS_EXPIRES_IN || '15m',
+    const accessToken = jwt.sign(accessTokenPayload as Record<string, unknown>, Config.JWT_SECRET, {
+      expiresIn: Config.JWT_ACCESS_EXPIRES_IN,
     })
 
-    const refreshToken = jwt.sign(refreshTokenPayload, Config.JWT_SECRET, {
-      expiresIn: Config.JWT_REFRESH_EXPIRES_IN || '7d',
-    })
+    const refreshToken = jwt.sign(
+      refreshTokenPayload as Record<string, unknown>,
+      Config.JWT_SECRET,
+      {
+        expiresIn: Config.JWT_REFRESH_EXPIRES_IN,
+      }
+    )
 
     return { accessToken, refreshToken }
   }
@@ -88,13 +72,13 @@ export class AuthService {
       const payload = jwt.verify(token, Config.JWT_SECRET) as TokenPayload
 
       if (payload.type !== type) {
-        throw new AppError(`Invalid token type. Expected ${type} token`, 401)
+        throw new UnauthorizedError(`Invalid token type. Expected ${type} token`)
       }
 
       // Check if token is blacklisted
       const isBlacklisted = await this.tokenRepository.get(`blacklist:${token}`)
       if (isBlacklisted) {
-        throw new AppError('Token has been revoked', 401)
+        throw new UnauthorizedError('Token has been revoked')
       }
 
       return payload
@@ -102,10 +86,10 @@ export class AuthService {
       // Type guard for JWT errors
       if (error instanceof Error) {
         if (error.name === 'TokenExpiredError') {
-          throw new AppError('Token has expired', 401)
+          throw new UnauthorizedError('Token has expired')
         }
         if (error.name === 'JsonWebTokenError') {
-          throw new AppError('Invalid token', 401)
+          throw new UnauthorizedError('Invalid token')
         }
       }
       throw error
@@ -120,27 +104,28 @@ export class AuthService {
 
     // Validate password length to prevent DoS via bcrypt
     if (dto.password.length > 72) {
-      throw new AppError('Password too long', 400)
+      throw new ValidationError('Password too long')
     }
 
     // Fetch user from database via repository
     const user = await this.userRepository.findByEmail(dto.email)
 
     if (!user) {
-      throw new AppError('Invalid email or password', 400)
+      throw new ValidationError('Invalid email or password')
     }
 
     // Verify password
     const isPasswordValid = await PasswordUtils.compare(dto.password, user.password)
 
     if (!isPasswordValid) {
-      throw new AppError('Invalid email or password', 400)
+      throw new ValidationError('Invalid email or password')
     }
 
+    const userRole = this.convertRole(user.role)
     const tokens = this.generateTokens({
       id: user.id,
       email: user.email,
-      role: user.role.toLowerCase() as 'admin' | 'moderator' | 'user',
+      role: userRole,
     })
 
     // Store refresh token for multi-device support
@@ -154,7 +139,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role.toLowerCase() as 'admin' | 'moderator' | 'user',
+        role: userRole,
       },
     }
   }
@@ -167,20 +152,22 @@ export class AuthService {
 
     // Validate password length to prevent DoS
     if (dto.password.length > 72) {
-      throw new AppError('Password too long', 400)
+      throw new ValidationError('Password too long')
     }
 
     // Validate password strength
     const passwordValidation = PasswordUtils.validateStrength(dto.password)
     if (!passwordValidation.valid) {
-      throw new AppError(`Password validation failed: ${passwordValidation.errors.join(', ')}`, 400)
+      throw new ValidationError(
+        `Password validation failed: ${passwordValidation.errors.join(', ')}`
+      )
     }
 
     // Check if user already exists via repository
     const existingUser = await this.userRepository.findByEmail(dto.email)
 
     if (existingUser) {
-      throw new AppError('User with this email already exists', 400)
+      throw new ValidationError('User with this email already exists')
     }
 
     // Hash password
@@ -195,10 +182,11 @@ export class AuthService {
       role: Role.USER,
     })
 
+    const userRole = this.convertRole(newUser.role)
     const tokens = this.generateTokens({
       id: newUser.id,
       email: newUser.email,
-      role: newUser.role.toLowerCase() as 'admin' | 'moderator' | 'user',
+      role: userRole,
     })
 
     // Store refresh token for multi-device support
@@ -212,7 +200,7 @@ export class AuthService {
         id: newUser.id,
         email: newUser.email,
         name: newUser.name,
-        role: newUser.role.toLowerCase() as 'admin' | 'moderator' | 'user',
+        role: userRole,
       },
     }
   }
@@ -227,13 +215,13 @@ export class AuthService {
     this.logger.info('Token refresh attempt')
 
     // Verify refresh token
-    const payload = await this.verifyToken(refreshToken, 'refresh')
+    const payload = await this.verifyToken(refreshToken, TOKEN_TYPES.REFRESH)
 
     // Check if refresh token exists in user's token set (multi-device support)
     const storedTokens = await this.tokenRepository.getSet(`refresh:${payload.id}`)
 
     if (!storedTokens.includes(refreshToken)) {
-      throw new AppError('Invalid refresh token', 401)
+      throw new UnauthorizedError('Invalid refresh token')
     }
 
     // Generate new tokens
@@ -294,7 +282,7 @@ export class AuthService {
     id: string
     email: string
     name: string
-    role: 'admin' | 'moderator' | 'user'
+    role: UserRole
   }> {
     const user = await this.userRepository.findById(userId)
 
@@ -306,7 +294,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role.toLowerCase() as 'admin' | 'moderator' | 'user',
+      role: this.convertRole(user.role),
     }
   }
 }

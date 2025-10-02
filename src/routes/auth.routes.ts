@@ -1,12 +1,17 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { loginSchema, registerSchema, refreshSchema } from '@/schemas/auth.schemas'
-import { container } from '@/app'
+import { getContainer } from '@/app'
+import { RATE_LIMITS } from '@/constants'
 
 export default async function authRoutes(fastify: FastifyInstance) {
   // Get authService from DI container (singleton)
+  const container = getContainer()
+  if (!container) {
+    throw new Error('DI Container not initialized')
+  }
   const authService = container.cradle.authService
 
-  // Login endpoint
+  // Login endpoint with stricter rate limiting
   fastify.post(
     '/login',
     {
@@ -25,24 +30,24 @@ export default async function authRoutes(fastify: FastifyInstance) {
           },
         },
       },
+      config: {
+        rateLimit: {
+          max: RATE_LIMITS.AUTH.MAX,
+          timeWindow: RATE_LIMITS.AUTH.TIMEWINDOW,
+        },
+      },
     },
     async (
       request: FastifyRequest<{ Body: { email: string; password: string } }>,
       reply: FastifyReply
     ) => {
-      try {
-        const result = await authService.login(request.body)
-        return reply.send(result)
-      } catch (error) {
-        return reply.code(400).send({
-          error: error instanceof Error ? error.message : 'Login failed',
-          code: 400,
-        })
-      }
+      // No try-catch needed - centralized error handler will catch everything
+      const result = await authService.login(request.body)
+      return reply.send(result)
     }
   )
 
-  // Register endpoint
+  // Register endpoint with stricter rate limiting
   fastify.post(
     '/register',
     {
@@ -61,6 +66,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
           },
         },
       },
+      config: {
+        rateLimit: {
+          max: RATE_LIMITS.AUTH.MAX,
+          timeWindow: RATE_LIMITS.AUTH.TIMEWINDOW,
+        },
+      },
     },
     async (
       request: FastifyRequest<{
@@ -68,15 +79,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
       }>,
       reply: FastifyReply
     ) => {
-      try {
-        const result = await authService.register(request.body)
-        return reply.code(201).send(result)
-      } catch (error) {
-        return reply.code(400).send({
-          error: error instanceof Error ? error.message : 'Registration failed',
-          code: 400,
-        })
-      }
+      const result = await authService.register(request.body)
+      return reply.code(201).send(result)
     }
   )
 
@@ -101,15 +105,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
       },
     },
     async (request: FastifyRequest<{ Body: { refreshToken: string } }>, reply: FastifyReply) => {
-      try {
-        const result = await authService.refreshToken(request.body.refreshToken)
-        return reply.send(result)
-      } catch (error) {
-        return reply.code(401).send({
-          error: error instanceof Error ? error.message : 'Token refresh failed',
-          code: 401,
-        })
-      }
+      const result = await authService.refreshToken(request.body.refreshToken)
+      return reply.send(result)
     }
   )
 
@@ -139,20 +136,14 @@ export default async function authRoutes(fastify: FastifyInstance) {
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      try {
-        // Extract tokens from request
-        const authorization = request.headers.authorization
-        const accessToken = authorization?.substring(7) // Remove 'Bearer ' prefix
+      // Extract tokens from request
+      const authorization = request.headers.authorization
+      const accessToken = authorization?.substring(7) // Remove 'Bearer ' prefix
 
-        const user = (request as any).user
-        await authService.logout(user.id, accessToken)
-        return reply.send({ message: 'Logged out successfully' })
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Logout failed',
-          code: 500,
-        })
-      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const user = (request as any).user
+      await authService.logout(user.id, accessToken)
+      return reply.send({ message: 'Logged out successfully' })
     }
   )
 }

@@ -4,26 +4,21 @@ import fastifyHelmet from '@fastify/helmet'
 import fastifyRateLimit from '@fastify/rate-limit'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
-import fastifyRedis from '@fastify/redis'
-// @ts-ignore
 import fastifyFormbody from '@fastify/formbody'
 import { swaggerConfig, swaggerUiConfig } from '@/config/swagger'
 import { registerRoutes } from '@/routes'
 import { Logger } from '@/utils/logger'
 import { Config } from '@/config'
-import { DatabaseService } from '@/services/database.service'
-import { RedisService } from '@/services/redis.service'
 import { jwtPlugin } from '@/plugins/jwt.plugin'
 import { createDIContainer, DIContainer } from '@/container'
+import { errorHandler } from '@/middleware/error-handler.middleware'
+import { ServiceRegistry, getServiceRegistry } from '@/services/service-registry.service'
+import { PUBLIC_ROUTES, AUTH, RATE_LIMITS, ROUTES, ServiceStatus } from '@/constants'
 
 const logger = new Logger('App')
 
-// Service availability flags
-export let isRedisAvailable = false
-export let isPostgresAvailable = false
-
-// DI Container
-export let container: DIContainer
+// Service Registry (replaces global mutable state)
+let serviceRegistry: ServiceRegistry
 
 /**
  * Create and configure Fastify app
@@ -48,16 +43,19 @@ export async function createApp(): Promise<FastifyInstance> {
           },
   })
 
+  // Initialize Service Registry
+  serviceRegistry = getServiceRegistry()
+  await serviceRegistry.initialize()
+
   // Create DI container
-  container = createDIContainer()
+  const container = createDIContainer()
+  serviceRegistry.container = container
 
-  // Register container with Fastify
-  container.register({
-    fastify: () => fastify,
-  })
+  // Note: Fastify instance is not registered in container to avoid circular dependency
+  // If needed, access it through the routes' closure scope
 
-  // Initialize services
-  await initializeServices()
+  // Register centralized error handler
+  fastify.setErrorHandler(errorHandler)
 
   // Security: Helmet
   await fastify.register(fastifyHelmet, {
@@ -74,11 +72,12 @@ export async function createApp(): Promise<FastifyInstance> {
 
   // Rate limiting - critical for auth endpoints (disabled in test environment)
   if (Config.NODE_ENV !== 'test') {
+    // Global rate limit
     await fastify.register(fastifyRateLimit, {
-      max: Config.RATE_LIMIT_MAX,
-      timeWindow: Config.RATE_LIMIT_TIMEWINDOW,
-      ban: 5, // Ban after 5 violations
-      cache: 10000, // Cache 10k entries
+      max: RATE_LIMITS.GLOBAL.MAX,
+      timeWindow: RATE_LIMITS.GLOBAL.TIMEWINDOW,
+      ban: RATE_LIMITS.GLOBAL.BAN,
+      cache: 10000,
     })
   }
 
@@ -89,13 +88,15 @@ export async function createApp(): Promise<FastifyInstance> {
   fastify.register(jwtPlugin)
 
   // Register Swagger
-  fastify.register(fastifySwagger, swaggerConfig)
-  fastify.register(fastifySwaggerUi, swaggerUiConfig)
+  if (Config.ENABLE_SWAGGER) {
+    fastify.register(fastifySwagger, swaggerConfig)
+    fastify.register(fastifySwaggerUi, swaggerUiConfig)
+  }
 
   // Configure CORS
   const getCorsOrigin = () => {
     if (Config.NODE_ENV === 'production') {
-      return Config.CORS_ORIGIN || '*'
+      return Config.CORS_ORIGIN === '*' ? false : Config.CORS_ORIGIN
     }
     return '*'
   }
@@ -111,18 +112,8 @@ export async function createApp(): Promise<FastifyInstance> {
   // Global auth middleware for protected routes
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     // Skip auth for public endpoints
-    const publicRoutes = [
-      '/health',
-      '/docs',
-      '/auth',
-      '/webhook',
-      '/docs/json',
-      '/docs/yaml',
-      '/docs/static',
-    ]
-
-    const isPublicRoute = publicRoutes.some(
-      route => request.url.startsWith(route) || request.url === '/'
+    const isPublicRoute = PUBLIC_ROUTES.some(
+      route => request.url.startsWith(route) || request.url === ROUTES.ROOT
     )
 
     if (isPublicRoute) {
@@ -130,7 +121,7 @@ export async function createApp(): Promise<FastifyInstance> {
     }
 
     // Check authorization header
-    const authorization = request.headers.authorization
+    const authorization = request.headers[AUTH.HEADER_NAME]
 
     if (!authorization) {
       return reply.code(401).send({
@@ -140,15 +131,15 @@ export async function createApp(): Promise<FastifyInstance> {
     }
 
     // Validate token format
-    if (!authorization.startsWith('Bearer ')) {
+    if (!authorization.startsWith(AUTH.BEARER_PREFIX)) {
       return reply.code(401).send({
-        error: 'Invalid token format',
+        error: 'Invalid token format. Use: Bearer <token>',
         code: 401,
       })
     }
 
     // Extract and validate token using AuthService from DI container
-    const token = authorization.substring(7)
+    const token = authorization.substring(AUTH.BEARER_PREFIX.length)
 
     try {
       const authService = container.cradle.authService
@@ -177,12 +168,12 @@ export async function createApp(): Promise<FastifyInstance> {
     }
   })
 
-  // Health check endpoint
+  // Health check endpoint with live checks
   fastify.get(
-    '/health',
+    ROUTES.HEALTH,
     {
       schema: {
-        description: 'Health check endpoint',
+        description: 'Health check endpoint with live service status',
         tags: ['System'],
         response: {
           200: {
@@ -204,28 +195,25 @@ export async function createApp(): Promise<FastifyInstance> {
       },
     },
     async (_, reply) => {
-      const health = {
-        status: 'ok',
+      const health = serviceRegistry.getHealth()
+
+      const status = health.postgres === false ? ServiceStatus.DEGRADED : ServiceStatus.AVAILABLE
+
+      return reply.send({
+        status,
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         services: {
-          redis: isRedisAvailable ? 'available' : 'unavailable',
-          postgres: isPostgresAvailable ? 'available' : 'unavailable',
+          redis: health.redis ? ServiceStatus.AVAILABLE : ServiceStatus.UNAVAILABLE,
+          postgres: health.postgres ? ServiceStatus.AVAILABLE : ServiceStatus.UNAVAILABLE,
         },
-      }
-
-      // If critical services are unavailable, return degraded status
-      if (!isPostgresAvailable) {
-        health.status = 'degraded'
-      }
-
-      return reply.send(health)
+      })
     }
   )
 
   // Root endpoint
   fastify.get(
-    '/',
+    ROUTES.ROOT,
     {
       schema: {
         description: 'Welcome endpoint',
@@ -246,7 +234,7 @@ export async function createApp(): Promise<FastifyInstance> {
       return reply.send({
         message: 'Welcome to Fastify Service Template',
         version: Config.SERVICE_VERSION,
-        docs: '/docs',
+        docs: ROUTES.DOCS,
       })
     }
   )
@@ -258,32 +246,15 @@ export async function createApp(): Promise<FastifyInstance> {
 }
 
 /**
- * Initialize external services (Database, Redis)
+ * Get service registry instance
  */
-async function initializeServices() {
-  // Initialize Database
-  const databaseService = new DatabaseService()
-  try {
-    await databaseService.connect()
-    isPostgresAvailable = true
-    logger.info('PostgreSQL connection established')
-  } catch (error) {
-    isPostgresAvailable = false
-    logger.warn('PostgreSQL is not available - running without database')
-  }
+export function getAppServiceRegistry(): ServiceRegistry {
+  return serviceRegistry
+}
 
-  // Initialize Redis
-  const redisService = new RedisService()
-  const redisAvailable = await redisService.checkConnection()
-
-  if (redisAvailable && Config.REDIS_URL) {
-    try {
-      // Note: Redis will be registered with Fastify if available
-      isRedisAvailable = true
-      logger.info('Redis connection available')
-    } catch (error) {
-      isRedisAvailable = false
-      logger.warn('Redis is not available - running without cache')
-    }
-  }
+/**
+ * Get DI container
+ */
+export function getContainer(): DIContainer | undefined {
+  return serviceRegistry?.container
 }

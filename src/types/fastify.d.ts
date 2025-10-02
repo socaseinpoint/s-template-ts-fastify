@@ -1,12 +1,12 @@
 import 'fastify'
+import { UserRole } from '@/constants'
 
 declare module 'fastify' {
   interface FastifyRequest {
     user?: {
       id: string
       email: string
-      name?: string
-      role: 'admin' | 'moderator' | 'user'
+      role: UserRole
     }
   }
 }

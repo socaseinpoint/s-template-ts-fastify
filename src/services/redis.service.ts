@@ -3,6 +3,7 @@ import { Config } from '@/config'
 
 export class RedisService {
   private logger: Logger
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private cache: Map<string, { value: any; expiry?: number }>
 
   constructor() {
@@ -20,6 +21,7 @@ export class RedisService {
     try {
       // In real implementation, you would check actual Redis connection
       // For now, we'll simulate a connection check
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const net = require('net')
       const url = new URL(Config.REDIS_URL)
       const socket = new net.Socket()
@@ -30,7 +32,7 @@ export class RedisService {
           resolve(false)
         }, 3000)
 
-        socket.connect(parseInt(url.port || '6379'), url.hostname, () => {
+        socket.connect(parseInt(url.port || '6379', 10), url.hostname, () => {
           clearTimeout(timeout)
           socket.destroy()
           resolve(true)
@@ -48,6 +50,7 @@ export class RedisService {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async get(key: string): Promise<any> {
     this.logger.debug(`Getting key: ${key}`)
 
@@ -65,6 +68,7 @@ export class RedisService {
     return item.value
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async set(key: string, value: any, ttl?: number): Promise<void> {
     this.logger.debug(`Setting key: ${key}`)
 
@@ -129,5 +133,11 @@ export class RedisService {
         }
       }
     }, 60000) // Run every minute
+  }
+
+  async disconnect(): Promise<void> {
+    this.logger.info('Disconnecting Redis (cleaning up cache)...')
+    this.cache.clear()
+    this.logger.info('Redis disconnected successfully')
   }
 }

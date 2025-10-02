@@ -1,9 +1,11 @@
+import { UserRole } from '@/constants'
+
 export interface User {
   id: string
   email: string
   name: string
   phone?: string
-  role: 'admin' | 'user' | 'moderator'
+  role: UserRole
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -37,4 +39,43 @@ export interface PaginationResult<T> {
     limit: number
     totalPages: number
   }
+}
+
+// JWT Payload
+export interface TokenPayload {
+  id: string
+  email: string
+  role: UserRole
+  type: 'access' | 'refresh'
+  [key: string]: unknown // Allow additional properties for JWT
+}
+
+// Auth DTOs
+export interface LoginDto {
+  email: string
+  password: string
+}
+
+export interface RegisterDto {
+  email: string
+  password: string
+  name: string
+  phone?: string
+}
+
+export interface AuthResponse {
+  accessToken: string
+  refreshToken: string
+  user: {
+    id: string
+    email: string
+    name: string
+    role: UserRole
+  }
+}
+
+// Service Health
+export interface ServiceHealth {
+  redis: boolean
+  postgres: boolean
 }

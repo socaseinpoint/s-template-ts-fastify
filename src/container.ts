@@ -1,6 +1,5 @@
-import { createContainer, asClass, asValue, asFunction, InjectionMode, Lifetime } from 'awilix'
+import { createContainer, asValue, asFunction, InjectionMode, Lifetime } from 'awilix'
 import { PrismaClient } from '@prisma/client'
-import { FastifyInstance } from 'fastify'
 
 // Repositories
 import { UserRepository, IUserRepository } from '@/repositories/user.repository'
@@ -15,7 +14,6 @@ import { ItemService } from '@/services/item.service'
 export interface ICradle {
   // Infrastructure
   prisma: PrismaClient
-  fastify: FastifyInstance
 
   // Repositories
   userRepository: IUserRepository

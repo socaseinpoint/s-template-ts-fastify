@@ -1,10 +1,14 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { itemSchema, createItemSchema, updateItemSchema } from '@/schemas/item.schemas'
 import { requireAuth, requireModerator, requireAdmin } from '@/middleware/auth.middleware'
-import { container } from '@/app'
+import { getContainer } from '@/app'
 
 export default async function itemRoutes(fastify: FastifyInstance) {
   // Get itemService from DI container (singleton)
+  const container = getContainer()
+  if (!container) {
+    throw new Error('DI Container not initialized')
+  }
   const itemService = container.cradle.itemService
 
   // Get all items - accessible by all authenticated users

@@ -1,10 +1,14 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { userSchema, updateUserSchema } from '@/schemas/user.schemas'
 import { requireAuth, requireAdmin } from '@/middleware/auth.middleware'
-import { container } from '@/app'
+import { getContainer } from '@/app'
 
 export default async function userRoutes(fastify: FastifyInstance) {
   // Get userService from DI container (singleton)
+  const container = getContainer()
+  if (!container) {
+    throw new Error('DI Container not initialized')
+  }
   const userService = container.cradle.userService
 
   // Get all users - admin only
