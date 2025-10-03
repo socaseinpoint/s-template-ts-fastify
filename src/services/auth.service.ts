@@ -1,4 +1,4 @@
-import jwt, { type SignOptions } from 'jsonwebtoken'
+import jwt from 'jsonwebtoken'
 import { Logger } from '@/utils/logger'
 import { UnauthorizedError, ValidationError } from '@/utils/errors'
 import { PasswordUtils } from '@/utils/password'
@@ -54,23 +54,22 @@ export class AuthService {
       type: TOKEN_TYPES.REFRESH,
     }
 
-    const signOptions: SignOptions = {
+    const accessToken = jwt.sign(accessTokenPayload, Config.JWT_SECRET, {
       expiresIn: Config.JWT_ACCESS_EXPIRES_IN,
-    }
+    } as any)
 
-    const accessToken = jwt.sign(accessTokenPayload, Config.JWT_SECRET, signOptions)
-
-    const refreshSignOptions: SignOptions = {
+    const refreshToken = jwt.sign(refreshTokenPayload, Config.JWT_SECRET, {
       expiresIn: Config.JWT_REFRESH_EXPIRES_IN,
-    }
-
-    const refreshToken = jwt.sign(refreshTokenPayload, Config.JWT_SECRET, refreshSignOptions)
+    } as any)
 
     return { accessToken, refreshToken }
   }
 
   /**
    * Parse JWT expiration time to seconds
+   * Supports common time formats: 15m, 1h, 7d, etc.
+   * Note: 'ms' library could be used here for more robust parsing,
+   * but kept simple to avoid type issues with different versions
    */
   private parseExpirationToSeconds(expiration: string): number {
     const match = expiration.match(/^(\d+)([smhd])$/)

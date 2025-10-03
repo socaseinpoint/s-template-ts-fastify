@@ -1,5 +1,8 @@
 import { UserRole } from '@/constants'
 
+// Re-export UserRole for convenience
+export { UserRole } from '@/constants'
+
 export interface User {
   id: string
   email: string

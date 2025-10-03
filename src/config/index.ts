@@ -51,7 +51,46 @@ const envSchema = z.object({
   // Rate limiting
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_TIMEWINDOW: z.coerce.number().int().positive().default(60000), // 1 minute in ms
+  ENABLE_RATE_LIMIT: z
+    .string()
+    .default('true')
+    .transform(val => val !== 'false'),
 })
+
+/**
+ * Check if a string has sufficient entropy for cryptographic use
+ * Returns true if the secret has good randomness
+ */
+function hasStrongEntropy(secret: string): boolean {
+  if (secret.length < 64) return false
+  
+  const buffer = Buffer.from(secret)
+  const uniqueChars = new Set(buffer).size
+  const entropy = uniqueChars / buffer.length
+  
+  // Good entropy should have > 50% unique characters
+  // and use a variety of character types
+  return entropy > 0.5
+}
+
+/**
+ * Validate JWT secret strength
+ * Checks for common weak patterns
+ */
+function isWeakSecret(secret: string): boolean {
+  const weakPatterns = [
+    'change-this',
+    'password',
+    'secret',
+    '123456',
+    'qwerty',
+    'default',
+    'test',
+  ]
+  
+  const lowerSecret = secret.toLowerCase()
+  return weakPatterns.some(pattern => lowerSecret.includes(pattern))
+}
 
 // Validate environment variables
 function validateEnv() {
@@ -60,22 +99,39 @@ function validateEnv() {
 
     // Additional production checks
     if (parsed.NODE_ENV === 'production') {
-      if (parsed.JWT_SECRET.includes('change-this')) {
+      // Check for weak/default secrets
+      if (isWeakSecret(parsed.JWT_SECRET)) {
         throw new Error(
-          '❌ SECURITY: JWT_SECRET must be changed in production! Never use default secrets.'
+          '❌ SECURITY: JWT_SECRET contains weak or default patterns! Use a cryptographically secure random string.'
         )
       }
+      
+      // Check minimum length
       if (parsed.JWT_SECRET.length < 64) {
         throw new Error('❌ SECURITY: JWT_SECRET must be at least 64 characters in production')
       }
+      
+      // Check entropy
+      if (!hasStrongEntropy(parsed.JWT_SECRET)) {
+        throw new Error(
+          '❌ SECURITY: JWT_SECRET has weak entropy! Generate a secure random secret using: openssl rand -base64 64'
+        )
+      }
+      
+      // Require database in production
       if (!parsed.DATABASE_URL) {
         throw new Error('❌ DATABASE_URL is required in production')
       }
     }
 
     // Warn about weak secrets in non-production
-    if (parsed.NODE_ENV !== 'production' && parsed.JWT_SECRET.length < 64) {
-      console.warn('⚠️  WARNING: JWT_SECRET should be at least 64 characters even in development')
+    if (parsed.NODE_ENV !== 'production') {
+      if (parsed.JWT_SECRET.length < 64) {
+        console.warn('⚠️  WARNING: JWT_SECRET should be at least 64 characters even in development')
+      }
+      if (isWeakSecret(parsed.JWT_SECRET)) {
+        console.warn('⚠️  WARNING: JWT_SECRET contains weak patterns. Generate secure secret: openssl rand -base64 64')
+      }
     }
 
     return parsed

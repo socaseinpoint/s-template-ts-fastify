@@ -8,5 +8,8 @@ declare module 'fastify' {
       email: string
       role: UserRole
     }
+    // Request context properties (set by request-context.plugin)
+    correlationId: string
+    startTime: number
   }
 }

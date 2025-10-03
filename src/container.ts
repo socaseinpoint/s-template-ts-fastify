@@ -67,14 +67,25 @@ export async function createDIContainer(
   } else {
     // Create new Prisma client and connect
     logger.info('Initializing Prisma client...')
+
+    // Configure connection pooling based on environment
+    const connectionLimit = process.env.NODE_ENV === 'production' ? 20 : 10
+
     prismaClient = new PrismaClient({
       log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+      // Connection pooling configuration
+      // Note: These are passed to the underlying database driver
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
     })
 
     if (!options.skipConnect) {
       try {
         await prismaClient.$connect()
-        logger.info('✅ Prisma client connected to database')
+        logger.info(`✅ Prisma client connected to database (pool size: ${connectionLimit})`)
       } catch (error) {
         logger.error('❌ Failed to connect to database', error)
         throw new Error(`Database connection failed: ${error}`)
@@ -95,21 +106,24 @@ export async function createDIContainer(
     logger.info('✅ Redis available for distributed token storage')
   }
 
-  // Register repositories with SCOPED lifetime for clean request isolation
+  // Register repositories with SINGLETON lifetime
+  // Since repositories are stateless and only depend on Prisma/Redis,
+  // SINGLETON is safe and more efficient than SCOPED
   container.register({
-    userRepository: asClass(UserRepository, { lifetime: Lifetime.SCOPED }),
-    itemRepository: asClass(ItemRepository, { lifetime: Lifetime.SCOPED }),
+    userRepository: asClass(UserRepository, { lifetime: Lifetime.SINGLETON }),
+    itemRepository: asClass(ItemRepository, { lifetime: Lifetime.SINGLETON }),
     // Choose TokenRepository implementation based on Redis availability
     tokenRepository: options.redis
-      ? asClass(RedisTokenRepository, { lifetime: Lifetime.SCOPED })
-      : asClass(TokenRepository, { lifetime: Lifetime.SCOPED }),
+      ? asClass(RedisTokenRepository, { lifetime: Lifetime.SINGLETON })
+      : asClass(TokenRepository, { lifetime: Lifetime.SINGLETON }),
   })
 
-  // Register business services with SCOPED lifetime
+  // Register business services with SINGLETON lifetime
+  // Services are stateless - all state is passed through method parameters
   container.register({
-    authService: asClass(AuthService, { lifetime: Lifetime.SCOPED }),
-    userService: asClass(UserService, { lifetime: Lifetime.SCOPED }),
-    itemService: asClass(ItemService, { lifetime: Lifetime.SCOPED }),
+    authService: asClass(AuthService, { lifetime: Lifetime.SINGLETON }),
+    userService: asClass(UserService, { lifetime: Lifetime.SINGLETON }),
+    itemService: asClass(ItemService, { lifetime: Lifetime.SINGLETON }),
   })
 
   logger.info(

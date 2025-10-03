@@ -53,7 +53,7 @@ export function errorHandler(
     error: error.message,
     stack: error.stack,
     body: sanitizeBody(request.body),
-    correlationId: (request as unknown as { correlationId?: string }).correlationId,
+    correlationId: request.correlationId,
     userId: request.user?.id,
   })
 

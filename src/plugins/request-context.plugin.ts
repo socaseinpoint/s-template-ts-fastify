@@ -4,15 +4,9 @@ import { Logger } from '@/utils/logger'
 
 const logger = new Logger('RequestContext')
 
-declare module 'fastify' {
-  interface FastifyRequest {
-    correlationId: string
-    startTime: number
-  }
-}
-
 /**
  * Request context plugin - adds correlation ID and request tracking
+ * Type declarations are in src/types/fastify.d.ts
  */
 export async function requestContextPlugin(fastify: FastifyInstance) {
   // Add correlation ID to every request

@@ -53,8 +53,6 @@ export class ItemService {
     const {
       page = 1,
       limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
       search,
       category,
       status,

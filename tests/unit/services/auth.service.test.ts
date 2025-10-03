@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import jwt from 'jsonwebtoken'
 import { Config } from '@/config'
-import { AppError } from '@/utils/errors'
 import { Role } from '@prisma/client'
 import type { IUserRepository } from '@/repositories/user.repository'
 import type { ITokenRepository } from '@/repositories/token.repository'
@@ -10,7 +9,7 @@ import type { ITokenRepository } from '@/repositories/token.repository'
 vi.mock('@/utils/password', () => ({
   PasswordUtils: {
     hash: vi.fn().mockResolvedValue('hashed-password'),
-    compare: vi.fn().mockImplementation((plain, hash) => {
+    compare: vi.fn().mockImplementation((plain, _hash) => {
       // Simulate password validation
       const validPasswords: Record<string, boolean> = {
         'Admin123!': true,

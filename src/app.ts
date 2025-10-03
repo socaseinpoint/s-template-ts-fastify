@@ -113,14 +113,17 @@ export async function createApp(): Promise<AppContext> {
     crossOriginEmbedderPolicy: Config.NODE_ENV === 'production',
   })
 
-  // Rate limiting - disabled in test environment
-  if (Config.NODE_ENV !== 'test') {
+  // Rate limiting - configurable via ENABLE_RATE_LIMIT env var
+  if (Config.ENABLE_RATE_LIMIT) {
     await fastify.register(fastifyRateLimit, {
       max: RATE_LIMITS.GLOBAL.MAX,
       timeWindow: RATE_LIMITS.GLOBAL.TIMEWINDOW,
       ban: RATE_LIMITS.GLOBAL.BAN,
       cache: 10000,
     })
+    logger.info('✅ Rate limiting enabled')
+  } else {
+    logger.warn('⚠️  Rate limiting disabled (set ENABLE_RATE_LIMIT=true to enable)')
   }
 
   // Register form body parser
