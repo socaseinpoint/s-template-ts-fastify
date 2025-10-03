@@ -147,4 +147,3 @@ export const errorResponseSchema = z.object({
 })
 
 export type ErrorResponse = z.infer<typeof errorResponseSchema>
-

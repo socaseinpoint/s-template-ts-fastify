@@ -298,7 +298,7 @@ export class AuthService {
     const tokens = this.generateTokens({
       id: payload.id,
       email: payload.email,
-      role: payload.role,
+      role: payload.role as UserRole,
     })
 
     // Rotate tokens with TTL

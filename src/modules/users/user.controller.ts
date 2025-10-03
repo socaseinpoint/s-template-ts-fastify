@@ -56,7 +56,7 @@ export default async function userController(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const currentUser = request.user
+      const currentUser = request.user!
       const { id } = request.params
 
       // Users can only get their own info unless they're admin
@@ -93,7 +93,7 @@ export default async function userController(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const currentUser = request.user
+      const currentUser = request.user!
       const { id } = request.params
       const body = request.body
 

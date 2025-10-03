@@ -82,7 +82,7 @@ describe('Helpers', () => {
     it('should generate random strings', () => {
       const str1 = randomString(10)
       const str2 = randomString(10)
-      
+
       expect(str1).toHaveLength(10)
       expect(str2).toHaveLength(10)
       expect(str1).not.toBe(str2)
@@ -98,7 +98,7 @@ describe('Helpers', () => {
     it('should split array into chunks', () => {
       const arr = [1, 2, 3, 4, 5, 6, 7]
       const chunks = chunk(arr, 3)
-      
+
       expect(chunks).toEqual([[1, 2, 3], [4, 5, 6], [7]])
     })
 
@@ -107,4 +107,3 @@ describe('Helpers', () => {
     })
   })
 })
-

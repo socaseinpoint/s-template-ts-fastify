@@ -88,7 +88,7 @@ export default async function itemController(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const user = request.user
+      const user = request.user!
       const item = await itemService.createItem({
         ...request.body,
         userId: user.id,

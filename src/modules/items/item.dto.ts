@@ -84,4 +84,3 @@ export const batchDeleteItemsDtoSchema = z.object({
 })
 
 export type BatchDeleteItemsDto = z.infer<typeof batchDeleteItemsDtoSchema>
-

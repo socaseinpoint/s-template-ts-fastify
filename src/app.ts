@@ -20,7 +20,7 @@ import { requestContextPlugin } from '@/shared/plugins/request-context.plugin'
 import { createDIContainer, DIContainer } from '@/container'
 import { errorHandler } from '@/shared/middleware/error-handler.middleware'
 import { RATE_LIMITS, ROUTES, ServiceStatus } from '@/constants'
-import { healthResponseSchema, welcomeResponseSchema } from '@/schemas/system.schemas'
+import { healthResponseSchema, welcomeResponseSchema } from '@/shared/schemas/system.schemas'
 
 const logger = new Logger('App')
 

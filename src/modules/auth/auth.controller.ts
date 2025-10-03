@@ -130,7 +130,7 @@ export default async function authController(fastify: FastifyInstance) {
       const authorization = request.headers.authorization
       const accessToken = authorization?.substring(7) // Remove 'Bearer ' prefix
 
-      const user = request.user
+      const user = request.user!
       await authService.logout(user.id, accessToken)
 
       return reply.send({ message: 'Logged out successfully' })
@@ -155,7 +155,7 @@ export default async function authController(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const user = request.user
+      const user = request.user!
       await authService.logoutAllDevices(user.id)
 
       return reply.send({ message: 'Logged out from all devices successfully' })
