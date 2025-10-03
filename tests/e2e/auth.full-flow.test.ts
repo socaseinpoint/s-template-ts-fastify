@@ -170,9 +170,9 @@ describe('Full Authentication Flow E2E Tests', () => {
 
       const response = await api.post('/v1/auth/register', existingUser)
 
-      // Can be 400 (error), 403 (banned), or 429 (rate limit)
-      expect([400, 403, 429]).toContain(response.status)
-      if (response.status === 400) {
+      // Can be 409 (conflict), 400 (error), 403 (banned), or 429 (rate limit)
+      expect([400, 403, 409, 429]).toContain(response.status)
+      if (response.status === 400 || response.status === 409) {
         expect(response.data.error).toContain('already exists')
       }
     })

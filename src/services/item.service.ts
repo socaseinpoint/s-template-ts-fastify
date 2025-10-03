@@ -1,69 +1,13 @@
 import { Logger } from '@/utils/logger'
 import { IItemRepository } from '@/repositories/item.repository'
 import { Item, ItemCategory, ItemStatus } from '@prisma/client'
-
-interface GetItemsParams {
-  page?: number
-  limit?: number
-  sortBy?: string
-  sortOrder?: 'asc' | 'desc'
-  search?: string
-  category?: string
-  status?: string
-}
-
-/**
- * Item response DTO with normalized enums (lowercase)
- */
-interface ItemResponseDto {
-  id: string
-  name: string
-  description: string | null
-  category: 'electronics' | 'clothing' | 'food' | 'books' | 'other'
-  price: number
-  quantity: number
-  status: 'available' | 'out_of_stock' | 'discontinued'
-  tags: string[]
-  metadata?: Record<string, unknown>
-  userId: string
-  createdAt: Date
-  updatedAt: Date
-}
-
-/**
- * Pagination response for items
- */
-interface ItemsPaginationResponse {
-  items: ItemResponseDto[]
-  pagination: {
-    total: number
-    page: number
-    limit: number
-    totalPages: number
-  }
-}
-
-interface CreateItemDto {
-  name: string
-  description?: string
-  category: string
-  price: number
-  quantity?: number
-  tags?: string[]
-  metadata?: Record<string, unknown>
-  userId: string
-}
-
-interface UpdateItemDto {
-  name?: string
-  description?: string
-  category?: string
-  price?: number
-  quantity?: number
-  status?: string
-  tags?: string[]
-  metadata?: Record<string, unknown>
-}
+import {
+  ItemResponseDto,
+  ItemsPaginationResponse,
+  GetItemsQueryDto,
+  CreateItemDto,
+  UpdateItemDto,
+} from '@/dto/item.dto'
 
 export class ItemService {
   private logger: Logger
@@ -78,6 +22,7 @@ export class ItemService {
   private toResponseDto(item: Item): ItemResponseDto {
     return {
       ...item,
+      description: item.description ?? undefined,
       category: item.category.toLowerCase() as
         | 'electronics'
         | 'clothing'
@@ -85,11 +30,11 @@ export class ItemService {
         | 'books'
         | 'other',
       status: item.status.toLowerCase() as 'available' | 'out_of_stock' | 'discontinued',
-      metadata: (item.metadata as Record<string, unknown>) || {},
+      metadata: (item.metadata as Record<string, unknown>) || undefined,
     }
   }
 
-  async getAllItems(params: GetItemsParams): Promise<ItemsPaginationResponse> {
+  async getAllItems(params: GetItemsQueryDto): Promise<ItemsPaginationResponse> {
     const { page = 1, limit = 10, search, category, status } = params
 
     this.logger.debug(`Fetching items with params: ${JSON.stringify(params)}`)
@@ -130,7 +75,7 @@ export class ItemService {
     return this.toResponseDto(item)
   }
 
-  async createItem(dto: CreateItemDto): Promise<ItemResponseDto> {
+  async createItem(dto: CreateItemDto & { userId: string }): Promise<ItemResponseDto> {
     this.logger.info(`Creating new item: ${dto.name}`)
 
     const item = await this.itemRepository.create({

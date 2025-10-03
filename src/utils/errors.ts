@@ -52,3 +52,47 @@ export class InternalServerError extends AppError {
     super(message, 500)
   }
 }
+
+/**
+ * Business logic violation
+ * Use when business rules are violated (e.g., negative quantity, invalid state transitions)
+ */
+export class BusinessError extends AppError {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(message: string, details?: any) {
+    super(message, 400, true, details)
+  }
+}
+
+/**
+ * Resource already exists
+ * Use when trying to create a resource that already exists
+ */
+export class AlreadyExistsError extends AppError {
+  constructor(resource: string, field?: string) {
+    const msg = field
+      ? `${resource} with this ${field} already exists`
+      : `${resource} already exists`
+    super(msg, 409)
+  }
+}
+
+/**
+ * Invalid operation for current state
+ * Use when an operation cannot be performed due to current state
+ */
+export class InvalidStateError extends AppError {
+  constructor(message: string, currentState?: string) {
+    super(message, 400, true, currentState ? { currentState } : undefined)
+  }
+}
+
+/**
+ * Rate limit exceeded
+ * Use when rate limit is exceeded
+ */
+export class RateLimitError extends AppError {
+  constructor(retryAfter?: number) {
+    super('Rate limit exceeded', 429, true, retryAfter ? { retryAfter } : undefined)
+  }
+}

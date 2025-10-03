@@ -1,43 +1,12 @@
 import { Logger } from '@/utils/logger'
 import { IUserRepository } from '@/repositories/user.repository'
 import { Role, User } from '@prisma/client'
-
-interface GetUsersParams {
-  page: number
-  limit: number
-  search?: string
-}
-
-interface UpdateUserDto {
-  name?: string
-  phone?: string
-  role?: string // Accepts lowercase, converts to uppercase internally
-  isActive?: boolean
-}
-
-/**
- * User response DTO with normalized enums (lowercase)
- */
-interface UserResponseDto {
-  id: string
-  email: string
-  name: string
-  phone?: string
-  role: 'user' | 'admin' | 'moderator'
-  isActive: boolean
-  createdAt: Date
-  updatedAt: Date
-}
-
-/**
- * Pagination response for users
- */
-interface UsersPaginationResponse {
-  users: UserResponseDto[]
-  total: number
-  page: number
-  limit: number
-}
+import {
+  UserResponseDto,
+  UsersPaginationResponse,
+  GetUsersQueryDto,
+  UpdateUserDto,
+} from '@/dto/user.dto'
 
 export class UserService {
   private logger: Logger
@@ -62,7 +31,7 @@ export class UserService {
     }
   }
 
-  async getAllUsers(params: GetUsersParams): Promise<UsersPaginationResponse> {
+  async getAllUsers(params: GetUsersQueryDto): Promise<UsersPaginationResponse> {
     this.logger.debug(`Fetching users with params: ${JSON.stringify(params)}`)
 
     const { page, limit } = params

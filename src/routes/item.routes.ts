@@ -1,19 +1,22 @@
 import { FastifyInstance } from 'fastify'
 import {
   itemSchema,
-  createItemDtoSchema,
-  updateItemDtoSchema,
-  getItemsQuerySchema,
   getItemsResponseSchema,
   itemIdParamsSchema,
-  batchDeleteItemsDtoSchema,
   batchDeleteResponseSchema,
   deleteItemResponseSchema,
   errorResponseSchema,
 } from '@/schemas/item.schemas'
+import {
+  createItemDtoSchema,
+  updateItemDtoSchema,
+  getItemsQuerySchema,
+  batchDeleteItemsDtoSchema,
+} from '@/dto/item.dto'
 import { UserRole } from '@/constants'
 import { authenticateMiddleware, authorizeRoles } from '@/middleware/authenticate.middleware'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { NotFoundError, UnauthorizedError } from '@/utils/errors'
 
 // Error response schemas
 const notFoundErrorSchema = errorResponseSchema
@@ -34,21 +37,12 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         querystring: getItemsQuerySchema,
         response: {
           200: getItemsResponseSchema,
-          500: errorResponseSchema,
         },
       },
     },
     async (request, reply) => {
-      try {
-        const result = await itemService.getAllItems(request.query)
-        // Type assertion needed due to Zod schema strictness vs actual runtime types
-        return reply.send(result as never)
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to fetch items',
-          code: 500,
-        })
-      }
+      const result = await itemService.getAllItems(request.query)
+      return reply.send(result)
     }
   )
 
@@ -65,27 +59,17 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         response: {
           200: itemSchema,
           404: notFoundErrorSchema,
-          500: errorResponseSchema,
         },
       },
     },
     async (request, reply) => {
-      try {
-        const item = await itemService.getItemById(request.params.id)
-        if (!item) {
-          return reply.code(404).send({
-            error: 'Item not found',
-            code: 404,
-          })
-        }
-        // Type assertion needed due to Zod schema strictness vs actual runtime types
-        return reply.send(item as never)
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to fetch item',
-          code: 500,
-        })
+      const item = await itemService.getItemById(request.params.id)
+
+      if (!item) {
+        throw new NotFoundError('Item not found')
       }
+
+      return reply.send(item)
     }
   )
 
@@ -101,28 +85,21 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         body: createItemDtoSchema,
         response: {
           201: itemSchema,
-          400: errorResponseSchema,
         },
       },
     },
     async (request, reply) => {
-      try {
-        const user = request.user
-        if (!user) {
-          throw new Error('Unauthorized')
-        }
-        const item = await itemService.createItem({
-          ...request.body,
-          userId: user.id,
-        })
-        // Type assertion needed due to Zod schema strictness vs actual runtime types
-        return reply.code(201).send(item as never)
-      } catch (error) {
-        return reply.code(400).send({
-          error: error instanceof Error ? error.message : 'Failed to create item',
-          code: 400,
-        })
+      const user = request.user
+      if (!user) {
+        throw new UnauthorizedError('Unauthorized')
       }
+
+      const item = await itemService.createItem({
+        ...request.body,
+        userId: user.id,
+      })
+
+      return reply.code(201).send(item)
     }
   )
 
@@ -140,27 +117,17 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         response: {
           200: itemSchema,
           404: notFoundErrorSchema,
-          500: errorResponseSchema,
         },
       },
     },
     async (request, reply) => {
-      try {
-        const item = await itemService.updateItem(request.params.id, request.body)
-        if (!item) {
-          return reply.code(404).send({
-            error: 'Item not found',
-            code: 404,
-          })
-        }
-        // Type assertion needed due to Zod schema strictness vs actual runtime types
-        return reply.send(item as never)
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to update item',
-          code: 500,
-        })
+      const item = await itemService.updateItem(request.params.id, request.body)
+
+      if (!item) {
+        throw new NotFoundError('Item not found')
       }
+
+      return reply.send(item)
     }
   )
 
@@ -177,26 +144,17 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         response: {
           200: deleteItemResponseSchema,
           404: notFoundErrorSchema,
-          500: errorResponseSchema,
         },
       },
     },
     async (request, reply) => {
-      try {
-        const deleted = await itemService.deleteItem(request.params.id)
-        if (!deleted) {
-          return reply.code(404).send({
-            error: 'Item not found',
-            code: 404,
-          })
-        }
-        return reply.send({ message: 'Item deleted successfully' })
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to delete item',
-          code: 500,
-        })
+      const deleted = await itemService.deleteItem(request.params.id)
+
+      if (!deleted) {
+        throw new NotFoundError('Item not found')
       }
+
+      return reply.send({ message: 'Item deleted successfully' })
     }
   )
 
@@ -212,23 +170,15 @@ export default async function itemRoutes(fastify: FastifyInstance) {
         body: batchDeleteItemsDtoSchema,
         response: {
           200: batchDeleteResponseSchema,
-          500: errorResponseSchema,
         },
       },
     },
     async (request, reply) => {
-      try {
-        const result = await itemService.batchDelete(request.body.ids)
-        return reply.send({
-          message: `Successfully deleted ${result.deletedCount} items`,
-          deleted: result.deletedCount,
-        })
-      } catch (error) {
-        return reply.code(500).send({
-          error: error instanceof Error ? error.message : 'Failed to delete items',
-          code: 500,
-        })
-      }
+      const result = await itemService.batchDelete(request.body.ids)
+      return reply.send({
+        message: `Successfully deleted ${result.deletedCount} items`,
+        deleted: result.deletedCount,
+      })
     }
   )
 }

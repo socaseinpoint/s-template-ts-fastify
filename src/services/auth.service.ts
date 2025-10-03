@@ -1,14 +1,15 @@
 import jwt from 'jsonwebtoken'
 import { Logger } from '@/utils/logger'
 import { AuditLogger } from '@/utils/audit-logger'
-import { UnauthorizedError, ValidationError } from '@/utils/errors'
+import { UnauthorizedError, ValidationError, AlreadyExistsError } from '@/utils/errors'
 import { PasswordUtils } from '@/utils/password'
 import { Config } from '@/config'
 import { IUserRepository } from '@/repositories/user.repository'
 import { ITokenRepository } from '@/repositories/token.repository'
 import { Role } from '@prisma/client'
 import { UserRole, TOKEN_TYPES } from '@/constants'
-import { LoginDto, RegisterDto, AuthResponse, TokenPayload } from '@/types'
+import { TokenPayload } from '@/types'
+import { LoginDto, RegisterDto, AuthResponse } from '@/dto/auth.dto'
 
 /**
  * Authentication Service
@@ -227,7 +228,7 @@ export class AuthService {
     const existingUser = await this.userRepository.findByEmail(dto.email)
 
     if (existingUser) {
-      throw new ValidationError('User with this email already exists')
+      throw new AlreadyExistsError('User', 'email')
     }
 
     // Hash password

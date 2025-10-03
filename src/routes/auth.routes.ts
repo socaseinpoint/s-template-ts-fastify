@@ -1,14 +1,12 @@
 import { FastifyInstance } from 'fastify'
 import {
-  loginDtoSchema,
   loginResponseSchema,
-  registerDtoSchema,
   registerResponseSchema,
-  refreshTokenDtoSchema,
   refreshTokenResponseSchema,
   logoutResponseSchema,
   errorResponseSchema,
 } from '@/schemas/auth.schemas'
+import { loginDtoSchema, registerDtoSchema, refreshTokenDtoSchema } from '@/dto/auth.dto'
 import { RATE_LIMITS } from '@/constants'
 import { authenticateMiddleware } from '@/middleware/authenticate.middleware'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'

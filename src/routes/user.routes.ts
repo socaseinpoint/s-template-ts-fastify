@@ -1,17 +1,17 @@
 import { FastifyInstance } from 'fastify'
 import {
   userResponseSchema,
-  updateUserDtoSchema,
-  getUsersQuerySchema,
   getUsersResponseSchema,
   userIdParamsSchema,
   deleteUserResponseSchema,
   forbiddenErrorSchema,
   notFoundErrorSchema,
 } from '@/schemas/user.schemas'
+import { updateUserDtoSchema, getUsersQuerySchema } from '@/dto/user.dto'
 import { UserRole } from '@/constants'
 import { authenticateMiddleware, authorizeRoles } from '@/middleware/authenticate.middleware'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { NotFoundError, ForbiddenError } from '@/utils/errors'
 
 export default async function userRoutes(fastify: FastifyInstance) {
   // Get userService from DI container via fastify decorator
@@ -61,19 +61,13 @@ export default async function userRoutes(fastify: FastifyInstance) {
 
       // Users can only get their own info unless they're admin
       if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
-        return reply.code(403).send({
-          error: 'You can only access your own information',
-          code: 403,
-        })
+        throw new ForbiddenError('You can only access your own information')
       }
 
       const user = await userService.getUserById(id)
 
       if (!user) {
-        return reply.code(404).send({
-          error: 'User not found',
-          code: 404,
-        })
+        throw new NotFoundError('User not found')
       }
 
       return reply.send(user)
@@ -105,27 +99,18 @@ export default async function userRoutes(fastify: FastifyInstance) {
 
       // Users can only update themselves, admins can update anyone
       if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
-        return reply.code(403).send({
-          error: 'You can only update your own information',
-          code: 403,
-        })
+        throw new ForbiddenError('You can only update your own information')
       }
 
       // Non-admins cannot change roles or active status
       if (currentUser.role !== UserRole.ADMIN && (body.role || body.isActive !== undefined)) {
-        return reply.code(403).send({
-          error: 'Only admins can change role or active status',
-          code: 403,
-        })
+        throw new ForbiddenError('Only admins can change role or active status')
       }
 
       const user = await userService.updateUser(id, body)
 
       if (!user) {
-        return reply.code(404).send({
-          error: 'User not found',
-          code: 404,
-        })
+        throw new NotFoundError('User not found')
       }
 
       return reply.send(user)
@@ -151,12 +136,11 @@ export default async function userRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params
       const deleted = await userService.deleteUser(id)
+
       if (!deleted) {
-        return reply.code(404).send({
-          error: 'User not found',
-          code: 404,
-        })
+        throw new NotFoundError('User not found')
       }
+
       return reply.send({ message: 'User deleted successfully' })
     }
   )
