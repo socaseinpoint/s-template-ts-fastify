@@ -3,14 +3,19 @@ import { BaseRepository } from '@/shared/database/base.repository'
 
 export interface IItemRepository {
   findById(id: string): Promise<Item | null>
-  create(data: CreateItemDto): Promise<Item>
-  update(id: string, data: UpdateItemDto): Promise<Item>
+  create(data: CreateItemData): Promise<Item>
+  update(id: string, data: UpdateItemData): Promise<Item>
   delete(id: string): Promise<void>
   deleteMany(ids: string[]): Promise<number>
   findMany(params: FindManyItemsParams): Promise<{ items: Item[]; total: number }>
 }
 
-export interface CreateItemDto {
+/**
+ * Data transfer objects for repository layer
+ * Note: These are different from HTTP DTOs (item.dto.ts)
+ * These include internal fields and Prisma enums
+ */
+export interface CreateItemData {
   name: string
   description?: string
   category: ItemCategory
@@ -22,7 +27,7 @@ export interface CreateItemDto {
   userId: string
 }
 
-export interface UpdateItemDto {
+export interface UpdateItemData {
   name?: string
   description?: string
   category?: ItemCategory
@@ -45,23 +50,21 @@ export interface FindManyItemsParams {
 }
 
 export class ItemRepository
-  extends BaseRepository<Item, CreateItemDto, UpdateItemDto>
+  extends BaseRepository<Item, CreateItemData, UpdateItemData>
   implements IItemRepository
 {
   constructor(prisma: PrismaClient) {
     super(prisma, 'Item')
-  }
-  update(id: string, data: UpdateItemDto): Promise<Item> {
-    throw new Error('Method not implemented.')
-  }
-  delete(id: string): Promise<void> {
-    throw new Error('Method not implemented.')
   }
 
   protected getModel() {
     return this.prisma.item
   }
 
+  /**
+   * Find item by id with user relation
+   * Override BaseRepository to include user
+   */
   async findById(id: string): Promise<Item | null> {
     try {
       return await this.prisma.item.findUnique({
@@ -74,7 +77,11 @@ export class ItemRepository
     }
   }
 
-  async create(data: CreateItemDto): Promise<Item> {
+  /**
+   * Create item with all fields
+   * Override BaseRepository for explicit field mapping
+   */
+  async create(data: CreateItemData): Promise<Item> {
     try {
       return await this.prisma.item.create({
         data: {
@@ -95,6 +102,9 @@ export class ItemRepository
     }
   }
 
+  /**
+   * Delete multiple items by IDs - custom batch operation
+   */
   async deleteMany(ids: string[]): Promise<number> {
     try {
       const result = await this.prisma.item.deleteMany({
@@ -107,6 +117,10 @@ export class ItemRepository
     }
   }
 
+  /**
+   * Find many items with custom pagination response
+   * Override BaseRepository to return custom structure
+   */
   // @ts-expect-error - Override with custom pagination response
   async findMany(params: FindManyItemsParams): Promise<{ items: Item[]; total: number }> {
     try {

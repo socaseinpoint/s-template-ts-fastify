@@ -1,11 +1,27 @@
 /**
- * Items Module
- * Public API exports
+ * Items Module - Public API
+ * 
+ * Exports only what's needed by other modules and infrastructure:
+ * - Service (for DI container)
+ * - Repository interface (for DI and testing)
+ * - Repository implementation (for DI container)
+ * - Controller (for routes registration)
+ * - Key response types (for inter-module communication)
  */
 
+// Service (for DI container)
 export { ItemService } from './item.service'
-export { ItemRepository, type IItemRepository } from './item.repository'
+
+// Repository (for DI container and testing)
+export { ItemRepository } from './item.repository'
+export type { IItemRepository } from './item.repository'
+
+// Controller (for routes)
 export { default as itemController } from './item.controller'
-export type { ItemResponseDto, ItemsPaginationResponse, GetItemsQueryDto, CreateItemDto, UpdateItemDto } from './item.dto'
-export type { Item, GetItemsResponse } from './item.schemas'
+
+// Public response types (for inter-module communication)
+export type { ItemResponseDto } from './item.dto'
+
+// Internal types (request DTOs, schemas, pagination) are NOT exported
+// They are HTTP layer implementation details
 

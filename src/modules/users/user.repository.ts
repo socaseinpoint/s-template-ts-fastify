@@ -4,13 +4,18 @@ import { BaseRepository } from '@/shared/database/base.repository'
 export interface IUserRepository {
   findByEmail(email: string): Promise<User | null>
   findById(id: string): Promise<User | null>
-  create(data: CreateUserDto): Promise<User>
-  update(id: string, data: UpdateUserDto): Promise<User>
+  create(data: CreateUserData): Promise<User>
+  update(id: string, data: UpdateUserData): Promise<User>
   delete(id: string): Promise<void>
   findMany(params: FindManyUsersParams): Promise<{ users: User[]; total: number }>
 }
 
-export interface CreateUserDto {
+/**
+ * Data transfer objects for repository layer
+ * Note: These are different from HTTP DTOs (user.dto.ts)
+ * These include internal fields like password, Prisma enums, etc.
+ */
+export interface CreateUserData {
   email: string
   password: string
   name: string
@@ -18,7 +23,7 @@ export interface CreateUserDto {
   role?: Role
 }
 
-export interface UpdateUserDto {
+export interface UpdateUserData {
   email?: string
   password?: string
   name?: string
@@ -38,29 +43,20 @@ export interface FindManyUsersParams {
 }
 
 export class UserRepository
-  extends BaseRepository<User, CreateUserDto, UpdateUserDto>
+  extends BaseRepository<User, CreateUserData, UpdateUserData>
   implements IUserRepository
 {
   constructor(prisma: PrismaClient) {
     super(prisma, 'User')
-  }
-  findById(id: string): Promise<User | null> {
-    throw new Error('Method not implemented.')
-  }
-  create(data: CreateUserDto): Promise<User> {
-    throw new Error('Method not implemented.')
-  }
-  update(id: string, data: UpdateUserDto): Promise<User> {
-    throw new Error('Method not implemented.')
-  }
-  delete(id: string): Promise<void> {
-    throw new Error('Method not implemented.')
   }
 
   protected getModel() {
     return this.prisma.user
   }
 
+  /**
+   * Find user by email - custom method not in BaseRepository
+   */
   async findByEmail(email: string): Promise<User | null> {
     try {
       return await this.prisma.user.findUnique({
@@ -72,6 +68,10 @@ export class UserRepository
     }
   }
 
+  /**
+   * Find many users with custom pagination response
+   * Override BaseRepository to return custom structure
+   */
   // @ts-expect-error - Override with custom pagination response
   async findMany(params: FindManyUsersParams): Promise<{ users: User[]; total: number }> {
     try {
@@ -93,4 +93,7 @@ export class UserRepository
       throw error
     }
   }
+
+  // Note: findById, create, update, delete are inherited from BaseRepository
+  // No need to override them unless adding custom logic
 }

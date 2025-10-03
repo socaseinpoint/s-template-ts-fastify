@@ -72,7 +72,7 @@ export async function createApp(): Promise<AppContext> {
   // Register request context plugin (correlation ID, tracing)
   await fastify.register(requestContextPlugin)
 
-  // Register Redis (optional - graceful fallback to in-memory)
+  // Register Redis
   let redisClient
   if (Config.REDIS_URL || Config.REDIS_HOST) {
     try {
@@ -89,11 +89,39 @@ export async function createApp(): Promise<AppContext> {
       redisClient = fastify.redis
       logger.info('✅ Redis connected successfully')
     } catch (error) {
-      logger.warn('⚠️  Redis connection failed, falling back to in-memory storage', error)
+      // In production, Redis is REQUIRED for distributed token storage
+      if (Config.NODE_ENV === 'production') {
+        logger.error('❌ Redis connection failed in production - FATAL', error)
+        throw new Error(
+          'Redis is required in production for distributed token storage and rate limiting. ' +
+            'Set REDIS_URL or REDIS_HOST in environment variables.'
+        )
+      }
+
+      // In development/test, fallback to in-memory (single instance only)
+      logger.warn(
+        '⚠️  Redis connection failed (dev/test mode), falling back to in-memory storage',
+        error
+      )
+      logger.warn(
+        '⚠️  WARNING: In-memory storage does NOT work in distributed/multi-instance deployments!'
+      )
       redisClient = undefined
     }
   } else {
-    logger.info('ℹ️  Redis not configured, using in-memory token storage')
+    // Redis not configured
+    if (Config.NODE_ENV === 'production') {
+      logger.error('❌ Redis not configured in production - FATAL')
+      throw new Error(
+        'Redis configuration is required in production. ' +
+          'Set REDIS_URL or REDIS_HOST in environment variables.'
+      )
+    }
+
+    logger.info('ℹ️  Redis not configured, using in-memory token storage (dev/test only)')
+    logger.warn(
+      '⚠️  WARNING: In-memory storage does NOT work in distributed/multi-instance deployments!'
+    )
   }
 
   // Create DI container with Redis if available

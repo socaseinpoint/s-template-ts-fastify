@@ -99,7 +99,7 @@ export class ItemService {
 
     try {
       // Build update data with proper types for repository
-      const updateData: import('./item.repository').UpdateItemDto = {
+      const updateData: import('./item.repository').UpdateItemData = {
         name: dto.name,
         description: dto.description,
         price: dto.price,

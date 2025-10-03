@@ -4,7 +4,7 @@ import { AuditLogger } from '@/shared/utils/audit-logger'
 import { UnauthorizedError, ValidationError, AlreadyExistsError } from '@/shared/utils/errors'
 import { PasswordUtils } from '@/shared/utils/password'
 import { Config } from '@/config'
-import { IUserRepository } from '@/modules/users/user.repository'
+import { IUserRepository, type CreateUserData } from '@/modules/users/user.repository'
 import { ITokenRepository } from '@/shared/cache/token.repository'
 import { Role } from '@prisma/client'
 import { UserRole, TOKEN_TYPES } from '@/constants'
@@ -233,13 +233,14 @@ export class AuthService {
     const hashedPassword = await PasswordUtils.hash(dto.password)
 
     // Create new user
-    const newUser = await this.userRepository.create({
+    const userData: CreateUserData = {
       email: dto.email,
       password: hashedPassword,
       name: dto.name,
       phone: dto.phone,
       role: Role.USER,
-    })
+    }
+    const newUser = await this.userRepository.create(userData)
 
     const userRole = this.convertRole(newUser.role)
     const tokens = this.generateTokens({
