@@ -79,7 +79,7 @@ export class ItemRepository
           quantity: data.quantity ?? 0,
           status: data.status ?? ItemStatus.AVAILABLE,
           tags: data.tags ?? [],
-          metadata: data.metadata ?? {},
+          metadata: (data.metadata as object) ?? {},
           userId: data.userId,
         },
       })

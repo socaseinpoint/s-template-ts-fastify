@@ -19,12 +19,12 @@ interface ItemResponseDto {
   id: string
   name: string
   description: string | null
-  category: string
+  category: 'electronics' | 'clothing' | 'food' | 'books' | 'other'
   price: number
   quantity: number
-  status: string
+  status: 'available' | 'out_of_stock' | 'discontinued'
   tags: string[]
-  metadata: unknown
+  metadata?: Record<string, unknown>
   userId: string
   createdAt: Date
   updatedAt: Date
@@ -78,9 +78,14 @@ export class ItemService {
   private toResponseDto(item: Item): ItemResponseDto {
     return {
       ...item,
-      category: item.category.toLowerCase(),
-      status: item.status.toLowerCase(),
-      metadata: item.metadata || {},
+      category: item.category.toLowerCase() as
+        | 'electronics'
+        | 'clothing'
+        | 'food'
+        | 'books'
+        | 'other',
+      status: item.status.toLowerCase() as 'available' | 'out_of_stock' | 'discontinued',
+      metadata: (item.metadata as Record<string, unknown>) || {},
     }
   }
 
@@ -148,14 +153,16 @@ export class ItemService {
     this.logger.info(`Updating item with id: ${id}`)
 
     try {
-      const updateData: UpdateItemDto = { ...dto }
-
-      if (dto.category) {
-        updateData.category = dto.category.toUpperCase() as ItemCategory
-      }
-
-      if (dto.status) {
-        updateData.status = dto.status.toUpperCase() as ItemStatus
+      // Build update data with proper types for repository
+      const updateData: import('@/repositories/item.repository').UpdateItemDto = {
+        name: dto.name,
+        description: dto.description,
+        price: dto.price,
+        quantity: dto.quantity,
+        tags: dto.tags,
+        metadata: dto.metadata,
+        category: dto.category ? (dto.category.toUpperCase() as ItemCategory) : undefined,
+        status: dto.status ? (dto.status.toUpperCase() as ItemStatus) : undefined,
       }
 
       const item = await this.itemRepository.update(id, updateData)

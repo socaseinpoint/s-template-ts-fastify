@@ -68,6 +68,14 @@ export default async function userRoutes(fastify: FastifyInstance) {
       }
 
       const user = await userService.getUserById(id)
+      
+      if (!user) {
+        return reply.code(404).send({
+          error: 'User not found',
+          code: 404,
+        })
+      }
+      
       return reply.send(user)
     }
   )
@@ -112,6 +120,14 @@ export default async function userRoutes(fastify: FastifyInstance) {
       }
 
       const user = await userService.updateUser(id, body)
+      
+      if (!user) {
+        return reply.code(404).send({
+          error: 'User not found',
+          code: 404,
+        })
+      }
+      
       return reply.send(user)
     }
   )

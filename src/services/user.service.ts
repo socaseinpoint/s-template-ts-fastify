@@ -22,7 +22,7 @@ interface UserResponseDto {
   id: string
   email: string
   name: string
-  phone: string | null
+  phone?: string
   role: 'user' | 'admin' | 'moderator'
   isActive: boolean
   createdAt: Date
@@ -54,7 +54,7 @@ export class UserService {
       id: user.id,
       email: user.email,
       name: user.name,
-      phone: user.phone,
+      phone: user.phone ?? undefined, // Convert null to undefined for consistency
       role: user.role.toLowerCase() as 'user' | 'admin' | 'moderator',
       isActive: user.isActive,
       createdAt: user.createdAt,
