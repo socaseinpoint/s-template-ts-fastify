@@ -23,6 +23,19 @@ const envSchema = z.object({
   JWT_SECRET: z
     .string()
     .min(64, 'JWT_SECRET must be at least 64 characters for security')
+    .refine(
+      val => {
+        // In production, enforce strong entropy and no weak patterns
+        if (process.env.NODE_ENV === 'production') {
+          return !isWeakSecret(val) && hasStrongEntropy(val)
+        }
+        return true
+      },
+      {
+        message:
+          '❌ SECURITY: JWT_SECRET is weak or contains default patterns! Generate secure secret: openssl rand -base64 64',
+      }
+    )
     .default('your-secret-key-change-this-in-production-min-64-chars-for-security'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
@@ -45,8 +58,8 @@ const envSchema = z.object({
     .transform(val => val !== 'false'),
   ENABLE_SWAGGER: z
     .string()
-    .default('true')
-    .transform(val => val !== 'false'),
+    .default(process.env.NODE_ENV === 'production' ? 'false' : 'true')
+    .transform(val => val === 'true'),
 
   // Rate limiting
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),

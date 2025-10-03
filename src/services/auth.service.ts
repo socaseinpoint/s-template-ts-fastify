@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken'
 import { Logger } from '@/utils/logger'
+import { AuditLogger } from '@/utils/audit-logger'
 import { UnauthorizedError, ValidationError } from '@/utils/errors'
 import { PasswordUtils } from '@/utils/password'
 import { Config } from '@/config'
@@ -56,11 +57,11 @@ export class AuthService {
 
     const accessToken = jwt.sign(accessTokenPayload, Config.JWT_SECRET, {
       expiresIn: Config.JWT_ACCESS_EXPIRES_IN,
-    } as any)
+    } as jwt.SignOptions)
 
     const refreshToken = jwt.sign(refreshTokenPayload, Config.JWT_SECRET, {
       expiresIn: Config.JWT_REFRESH_EXPIRES_IN,
-    } as any)
+    } as jwt.SignOptions)
 
     return { accessToken, refreshToken }
   }
@@ -127,55 +128,99 @@ export class AuthService {
   /**
    * User login
    */
-  async login(dto: LoginDto): Promise<AuthResponse> {
+  async login(dto: LoginDto, ip = 'unknown', userAgent?: string): Promise<AuthResponse> {
     this.logger.info(`Login attempt for email: ${dto.email}`)
 
-    // Fetch user from database
-    const user = await this.userRepository.findByEmail(dto.email)
+    try {
+      // Fetch user from database
+      const user = await this.userRepository.findByEmail(dto.email)
 
-    if (!user) {
-      // Generic error to prevent user enumeration
-      throw new ValidationError('Invalid email or password')
-    }
+      if (!user) {
+        // Audit failed login
+        AuditLogger.logAuth({
+          action: 'login',
+          email: dto.email,
+          ip,
+          userAgent,
+          success: false,
+          reason: 'Invalid credentials',
+        })
+        // Generic error to prevent user enumeration
+        throw new ValidationError('Invalid email or password')
+      }
 
-    // Verify password
-    const isPasswordValid = await PasswordUtils.compare(dto.password, user.password)
+      // Verify password
+      const isPasswordValid = await PasswordUtils.compare(dto.password, user.password)
 
-    if (!isPasswordValid) {
-      throw new ValidationError('Invalid email or password')
-    }
+      if (!isPasswordValid) {
+        // Audit failed login
+        AuditLogger.logAuth({
+          action: 'login',
+          email: dto.email,
+          userId: user.id,
+          ip,
+          userAgent,
+          success: false,
+          reason: 'Invalid password',
+        })
+        throw new ValidationError('Invalid email or password')
+      }
 
-    const userRole = this.convertRole(user.role)
-    const tokens = this.generateTokens({
-      id: user.id,
-      email: user.email,
-      role: userRole,
-    })
-
-    // Store refresh token with TTL
-    const refreshTTL = this.parseExpirationToSeconds(Config.JWT_REFRESH_EXPIRES_IN)
-    await this.tokenRepository.addToSet(`refresh:${user.id}`, tokens.refreshToken, refreshTTL)
-
-    // Cleanup old expired tokens periodically
-    await this.tokenRepository.cleanupExpiredTokens(user.id)
-
-    this.logger.info(`User ${user.email} logged in successfully`)
-
-    return {
-      ...tokens,
-      user: {
+      const userRole = this.convertRole(user.role)
+      const tokens = this.generateTokens({
         id: user.id,
         email: user.email,
-        name: user.name,
         role: userRole,
-      },
+      })
+
+      // Store refresh token with TTL
+      const refreshTTL = this.parseExpirationToSeconds(Config.JWT_REFRESH_EXPIRES_IN)
+      await this.tokenRepository.addToSet(`refresh:${user.id}`, tokens.refreshToken, refreshTTL)
+
+      // Cleanup old expired tokens periodically
+      await this.tokenRepository.cleanupExpiredTokens(user.id)
+
+      this.logger.info(`User ${user.email} logged in successfully`)
+
+      // Audit successful login
+      AuditLogger.logAuth({
+        action: 'login',
+        email: user.email,
+        userId: user.id,
+        ip,
+        userAgent,
+        success: true,
+      })
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: userRole,
+        },
+      }
+    } catch (error) {
+      // If not already a ValidationError (i.e., unexpected error), audit it
+      if (!(error instanceof ValidationError)) {
+        AuditLogger.logAuth({
+          action: 'login',
+          email: dto.email,
+          ip,
+          userAgent,
+          success: false,
+          reason: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+      throw error
     }
   }
 
   /**
    * User registration
    */
-  async register(dto: RegisterDto): Promise<AuthResponse> {
+  async register(dto: RegisterDto, ip = 'unknown', userAgent?: string): Promise<AuthResponse> {
     this.logger.info(`Registration attempt for email: ${dto.email}`)
 
     // Check if user already exists
@@ -209,6 +254,16 @@ export class AuthService {
     await this.tokenRepository.addToSet(`refresh:${newUser.id}`, tokens.refreshToken, refreshTTL)
 
     this.logger.info(`User ${newUser.email} registered successfully`)
+
+    // Audit successful registration
+    AuditLogger.logAuth({
+      action: 'register',
+      email: newUser.email,
+      userId: newUser.id,
+      ip,
+      userAgent,
+      success: true,
+    })
 
     return {
       ...tokens,
@@ -265,7 +320,13 @@ export class AuthService {
   /**
    * User logout
    */
-  async logout(userId: string, accessToken?: string, refreshToken?: string): Promise<void> {
+  async logout(
+    userId: string,
+    accessToken?: string,
+    refreshToken?: string,
+    ip = 'unknown',
+    userAgent?: string
+  ): Promise<void> {
     this.logger.info(`User ${userId} logging out`)
 
     // Remove specific refresh token from user's token set (for multi-device)
@@ -295,6 +356,15 @@ export class AuthService {
     }
 
     this.logger.info(`User ${userId} logged out successfully`)
+
+    // Audit logout
+    AuditLogger.logAuth({
+      action: 'logout',
+      userId,
+      ip,
+      userAgent,
+      success: true,
+    })
   }
 
   /**

@@ -4,10 +4,13 @@ import { z } from 'zod'
  * Health check response schema
  */
 export const healthResponseSchema = z.object({
-  status: z.enum(['healthy', 'unhealthy']),
+  status: z.enum(['healthy', 'unhealthy', 'degraded']),
   timestamp: z.string(),
   uptime: z.number(),
-  database: z.string(),
+  services: z.object({
+    database: z.string(),
+    redis: z.string(),
+  }),
 })
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>

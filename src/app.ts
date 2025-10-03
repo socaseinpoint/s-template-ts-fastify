@@ -41,6 +41,9 @@ export async function createApp(): Promise<AppContext> {
   logger.info('Creating Fastify application...')
 
   const fastify = Fastify({
+    requestTimeout: 30000, // 30 seconds
+    connectionTimeout: 10000, // 10 seconds
+    keepAliveTimeout: 5000, // 5 seconds
     logger:
       Config.NODE_ENV === 'development'
         ? {
@@ -120,8 +123,22 @@ export async function createApp(): Promise<AppContext> {
       timeWindow: RATE_LIMITS.GLOBAL.TIMEWINDOW,
       ban: RATE_LIMITS.GLOBAL.BAN,
       cache: 10000,
+      // Use Redis for distributed rate limiting if available
+      redis: redisClient,
+      keyGenerator: request => {
+        return request.ip || (request.headers['x-forwarded-for'] as string) || 'unknown'
+      },
+      errorResponseBuilder: (_, context) => {
+        return {
+          error: 'Too many requests',
+          code: 429,
+          message: `Rate limit exceeded. Try again in ${Math.ceil(context.ttl / 1000)} seconds.`,
+        }
+      },
     })
-    logger.info('✅ Rate limiting enabled')
+    logger.info(
+      `✅ Rate limiting enabled (storage: ${redisClient ? 'Redis (distributed)' : 'In-memory'})`
+    )
   } else {
     logger.warn('⚠️  Rate limiting disabled (set ENABLE_RATE_LIMIT=true to enable)')
   }
@@ -161,26 +178,59 @@ export async function createApp(): Promise<AppContext> {
       },
     },
     async (_, reply) => {
-      // Perform real-time database health check
+      // Perform real-time health checks
       let dbStatus = ServiceStatus.UNAVAILABLE
-      let overallStatus: 'healthy' | 'unhealthy' = 'unhealthy'
+      let redisStatus = ServiceStatus.UNAVAILABLE
+      let overallStatus: 'healthy' | 'degraded' | 'unhealthy' = 'unhealthy'
 
+      // Check Database
       try {
         const prisma = container.cradle.prisma
         if (prisma && typeof prisma.$queryRaw === 'function') {
           await prisma.$queryRaw`SELECT 1`
           dbStatus = ServiceStatus.AVAILABLE
-          overallStatus = 'healthy'
         }
       } catch (error) {
-        logger.error('Health check failed:', error)
+        logger.error('Database health check failed:', error)
+      }
+
+      // Check Redis (optional dependency)
+      try {
+        const redis = container.cradle.redis
+        if (redis) {
+          await redis.ping()
+          redisStatus = ServiceStatus.AVAILABLE
+        } else {
+          redisStatus = ServiceStatus.NOT_CONFIGURED
+        }
+      } catch (error) {
+        logger.warn('Redis health check failed:', error)
+        redisStatus = ServiceStatus.UNAVAILABLE
+      }
+
+      // Determine overall status
+      if (dbStatus === ServiceStatus.AVAILABLE) {
+        if (
+          redisStatus === ServiceStatus.AVAILABLE ||
+          redisStatus === ServiceStatus.NOT_CONFIGURED
+        ) {
+          overallStatus = 'healthy'
+        } else {
+          // Redis failed but it's optional
+          overallStatus = 'degraded'
+        }
+      } else {
+        overallStatus = 'unhealthy'
       }
 
       return reply.send({
         status: overallStatus,
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        database: dbStatus,
+        services: {
+          database: dbStatus,
+          redis: redisStatus,
+        },
       })
     }
   )
@@ -218,11 +268,12 @@ export async function createApp(): Promise<AppContext> {
 /**
  * Get CORS origin configuration - secure by default
  */
-function getCorsOrigin(): string | string[] | boolean {
+function getCorsOrigin(): string | string[] {
   if (Config.NODE_ENV === 'production') {
     if (Config.CORS_ORIGIN === '*') {
-      logger.warn('⚠️  CORS wildcard (*) in production - credentials disabled for security')
-      return '*'
+      throw new Error(
+        '❌ SECURITY: CORS_ORIGIN=* is not allowed in production! Set specific domains (e.g., https://app.example.com)'
+      )
     }
     return Config.CORS_ORIGIN.split(',').map(o => o.trim())
   }

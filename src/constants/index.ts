@@ -62,6 +62,7 @@ export enum ServiceStatus {
   AVAILABLE = 'available',
   UNAVAILABLE = 'unavailable',
   DEGRADED = 'degraded',
+  NOT_CONFIGURED = 'not_configured',
 }
 
 // Public routes that don't require authentication
