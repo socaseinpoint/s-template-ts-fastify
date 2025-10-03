@@ -8,49 +8,31 @@ import { Logger } from './logger'
 const logger = new Logger('EnvValidation')
 
 export interface RedisValidationOptions {
-  redisUrl?: string
+  redisUrl: string
   redisHost?: string
-  nodeEnv: string
   context: string // e.g., "token storage", "rate limiting", "queues"
 }
 
 /**
- * Validate Redis configuration based on environment
- * Throws in production if Redis is required but not configured
- * Warns in development
+ * Validate Redis configuration (REQUIRED for all environments)
+ * Throws if Redis is not configured properly
+ * Video service cannot function without Redis
  */
-export function validateRedisConfig(options: RedisValidationOptions): {
-  isConfigured: boolean
-  isRequired: boolean
-  shouldThrow: boolean
-} {
-  const { redisUrl, redisHost, nodeEnv, context } = options
+export function validateRedisConfig(options: RedisValidationOptions): void {
+  const { redisUrl, redisHost, context } = options
 
   const isConfigured = Boolean(redisUrl || redisHost)
-  const isProduction = nodeEnv === 'production'
-  const isRequired = isProduction // Redis required in production
-  const shouldThrow = isRequired && !isConfigured
 
-  if (shouldThrow) {
+  if (!isConfigured) {
     throw new Error(
-      `❌ PRODUCTION ERROR: Redis is required for ${context} in production! ` +
-        `Set REDIS_URL or REDIS_HOST in environment variables.`
+      `❌ Redis is REQUIRED for ${context}! ` +
+        `Set REDIS_URL or REDIS_HOST in environment variables. ` +
+        `For local development: REDIS_URL=redis://localhost:6379 ` +
+        `Start Redis with: docker compose -f docker-compose.dev.yml up -d redis`
     )
   }
 
-  if (!isConfigured && !isProduction) {
-    logger.warn(`⚠️  Redis not configured for ${context} - using fallback (development only)`)
-  }
-
-  if (isConfigured) {
-    logger.info(`✅ Redis configured for ${context}`)
-  }
-
-  return {
-    isConfigured,
-    isRequired,
-    shouldThrow: false,
-  }
+  logger.info(`✅ Redis configured for ${context}: ${redisUrl || `${redisHost}:6379`}`)
 }
 
 /**

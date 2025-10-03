@@ -1,0 +1,81 @@
+version: '3.8'
+
+# Development environment with PostgreSQL + Redis
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml down
+#
+# Check status:
+#   docker compose -f docker-compose.dev.yml ps
+#
+# View logs:
+#   docker compose -f docker-compose.dev.yml logs -f redis
+#   docker compose -f docker-compose.dev.yml logs -f postgres
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ts-service-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: myapp_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app-network
+
+  # Redis (REQUIRED for queues, rate limiting, caching)
+  redis:
+    image: redis:7-alpine
+    container_name: ts-service-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - app-network
+
+  # Redis Commander (Web UI for Redis - optional but useful)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: ts-service-redis-commander
+    restart: unless-stopped
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
+

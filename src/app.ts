@@ -22,7 +22,6 @@ import { createDIContainer, DIContainer } from '@/container'
 import { errorHandler } from '@/shared/middleware/error-handler.middleware'
 import { RATE_LIMITS, ROUTES, ServiceStatus } from '@/constants'
 import { healthResponseSchema, welcomeResponseSchema } from '@/shared/schemas/system.schemas'
-import { validateRedisConfig } from '@/shared/utils/env-validation'
 
 const logger = new Logger('App')
 
@@ -74,44 +73,44 @@ export async function createApp(): Promise<AppContext> {
   // Register request context plugin (correlation ID, tracing)
   await fastify.register(requestContextPlugin)
 
-  // Register Redis (OPTIONAL in development, REQUIRED in production)
-  let redisClient
+  // Register Redis (REQUIRED for production video service)
+  // Redis is mandatory for: queues, rate limiting, token storage, caching
+  logger.info('Connecting to Redis...')
 
-  // Validate Redis configuration
-  const redisValidation = validateRedisConfig({
-    redisUrl: Config.REDIS_URL,
-    redisHost: Config.REDIS_HOST,
-    nodeEnv: Config.NODE_ENV,
-    context: 'API services (rate limiting, caching)',
-  })
-
-  if (redisValidation.isConfigured) {
-    try {
-      await fastify.register(fastifyRedis, {
-        url: Config.REDIS_URL,
-        host: Config.REDIS_HOST,
-        port: Config.REDIS_PORT,
-        password: Config.REDIS_PASSWORD,
-        // Graceful connection handling
-        lazyConnect: false,
-        enableReadyCheck: true,
-        maxRetriesPerRequest: 3,
-      })
-      redisClient = fastify.redis
-      logger.info('✅ Redis connected successfully')
-    } catch (error) {
-      if (Config.NODE_ENV === 'production') {
-        logger.error('❌ Redis connection failed - FATAL (production)', error)
-        throw new Error(
-          'Failed to connect to Redis in production. Check REDIS_URL/REDIS_HOST configuration.'
-        )
-      }
-      logger.warn('⚠️  Redis connection failed - falling back to in-memory storage', error)
-      redisClient = undefined
-    }
-  } else {
-    redisClient = undefined
+  try {
+    await fastify.register(fastifyRedis, {
+      url: Config.REDIS_URL,
+      host: Config.REDIS_HOST,
+      port: Config.REDIS_PORT,
+      password: Config.REDIS_PASSWORD,
+      // Connection settings
+      lazyConnect: false,
+      enableReadyCheck: true,
+      maxRetriesPerRequest: 3,
+      connectTimeout: 10000, // 10 seconds
+      // Exponential backoff retry strategy
+      retryStrategy: (times: number) => {
+        if (times > 3) {
+          logger.error('❌ Redis connection failed after 3 retries')
+          return null // Stop retrying
+        }
+        const delay = Math.min(times * 200, 2000)
+        logger.warn(`⚠️  Redis retry attempt ${times}, waiting ${delay}ms...`)
+        return delay
+      },
+    })
+    logger.info('✅ Redis connected successfully')
+  } catch (error) {
+    logger.error('❌ Redis connection FAILED - application cannot start', error)
+    throw new Error(
+      `Redis connection failed: ${error instanceof Error ? error.message : 'Unknown error'}. ` +
+        'Video service REQUIRES Redis for queues and caching. ' +
+        'Check REDIS_URL/REDIS_HOST configuration. ' +
+        'For local development: docker compose -f docker-compose.dev.yml up -d redis'
+    )
   }
+
+  const redisClient = fastify.redis
 
   // Check if we need to enable queues (MODE=all)
   const enableQueues = Config.MODE === 'all'
@@ -167,15 +166,10 @@ export async function createApp(): Promise<AppContext> {
       },
     }
 
-    // Use Redis if available, otherwise in-memory (local only)
-    if (redisClient) {
-      rateLimitConfig.redis = redisClient
-      await fastify.register(fastifyRateLimit, rateLimitConfig)
-      logger.info('✅ Rate limiting enabled (storage: Redis - distributed)')
-    } else {
-      await fastify.register(fastifyRateLimit, rateLimitConfig)
-      logger.warn('⚠️  Rate limiting enabled (storage: In-Memory - single instance only)')
-    }
+    // Use Redis for distributed rate limiting
+    rateLimitConfig.redis = redisClient
+    await fastify.register(fastifyRateLimit, rateLimitConfig)
+    logger.info('✅ Rate limiting enabled (Redis - distributed)')
   } else {
     logger.warn('⚠️  Rate limiting disabled (set ENABLE_RATE_LIMIT=true to enable)')
   }
@@ -234,32 +228,25 @@ export async function createApp(): Promise<AppContext> {
         logger.error('Database health check failed:', error)
       }
 
-      // Check Redis (optional dependency)
+      // Check Redis (required dependency)
       try {
         const redis = container.cradle.redis
-        if (redis) {
-          await redis.ping()
-          redisStatus = ServiceStatus.AVAILABLE
-        } else {
-          redisStatus = ServiceStatus.NOT_CONFIGURED
-        }
+        await redis.ping()
+        redisStatus = ServiceStatus.AVAILABLE
       } catch (error) {
-        logger.warn('Redis health check failed:', error)
+        logger.error('Redis health check failed:', error)
         redisStatus = ServiceStatus.UNAVAILABLE
       }
 
       // Determine overall status
-      if (dbStatus === ServiceStatus.AVAILABLE) {
-        if (
-          redisStatus === ServiceStatus.AVAILABLE ||
-          redisStatus === ServiceStatus.NOT_CONFIGURED
-        ) {
-          overallStatus = 'healthy'
-        } else {
-          // Redis failed but it's optional
-          overallStatus = 'degraded'
-        }
+      // Both DB and Redis must be available for healthy status
+      if (dbStatus === ServiceStatus.AVAILABLE && redisStatus === ServiceStatus.AVAILABLE) {
+        overallStatus = 'healthy'
+      } else if (dbStatus === ServiceStatus.AVAILABLE) {
+        // DB works but Redis failed
+        overallStatus = 'degraded'
       } else {
+        // DB failed (critical)
         overallStatus = 'unhealthy'
       }
 

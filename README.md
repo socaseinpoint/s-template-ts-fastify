@@ -22,18 +22,64 @@ openssl rand -base64 64
 # 4. Start Docker services (PostgreSQL + Redis)
 docker compose -f docker-compose.dev.yml up -d
 
-# 5. Setup database
+# 5. Verify Redis and PostgreSQL are running
+docker compose -f docker-compose.dev.yml ps
+# Both should show "healthy" status
+
+# 6. Test Redis connection
+docker compose -f docker-compose.dev.yml exec redis redis-cli ping
+# Should return: PONG
+
+# 7. Setup database
 npm run prisma:generate
 npm run prisma:migrate
 npm run prisma:seed
 
-# 6. Run development server
+# 8. Run development server
 npm run dev
 ```
 
 **API:** http://localhost:3000/docs  
 **Queues:** http://localhost:3000/admin/queues  
+**Redis UI:** http://localhost:8081 (Redis Commander)  
 **Metrics:** http://localhost:3000/metrics
+
+---
+
+## ⚠️ Important: Redis is Required
+
+**This service REQUIRES Redis to function.** It's not optional.
+
+Redis is used for:
+- ✅ BullMQ job queues (video generation, processing)
+- ✅ Distributed rate limiting
+- ✅ Token storage (JWT refresh tokens)
+- ✅ Caching
+
+**Without Redis, the application will not start.**
+
+### Start Redis:
+```bash
+# Start Redis with Docker
+docker compose -f docker-compose.dev.yml up -d redis
+
+# Check Redis is running
+docker compose -f docker-compose.dev.yml ps redis
+
+# Test connection
+redis-cli ping  # or: docker compose exec redis redis-cli ping
+```
+
+### Environment Variables:
+```bash
+# .env file (REQUIRED)
+REDIS_URL=redis://localhost:6379
+
+# OR use individual settings:
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=  # Optional for local dev
+```
 
 ---
 

@@ -10,14 +10,18 @@ const envSchema = z.object({
   // Service Mode: 'all' = API + Worker, 'api' = API only, 'worker' = Worker only
   MODE: z.enum(['all', 'api', 'worker']).default('all'),
 
-  // Database configuration
-  DATABASE_URL: z.string().optional(),
+  // Database configuration (REQUIRED)
+  DATABASE_URL: z
+    .string()
+    .min(1, 'DATABASE_URL is required for all environments except unit tests'),
 
-  // Redis configuration
-  REDIS_URL: z.string().optional(),
+  // Redis configuration (REQUIRED for production video service)
+  REDIS_URL: z
+    .string()
+    .min(1, 'REDIS_URL is required. Use: redis://localhost:6379 for local development'),
   REDIS_HOST: z.string().default('127.0.0.1'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
-  REDIS_PASSWORD: z.string().optional(),
+  REDIS_PASSWORD: z.string().optional(), // Optional for local dev, required for production
 
   // Queue configuration (BullMQ)
   QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(5), // Max concurrent jobs per worker
@@ -138,9 +142,14 @@ function validateEnv() {
 
     // Additional production checks
     if (parsed.NODE_ENV === 'production') {
-      // Require database in production
-      if (!parsed.DATABASE_URL) {
-        throw new Error('❌ DATABASE_URL is required in production')
+      // Validate Redis password in production
+      if (!parsed.REDIS_PASSWORD) {
+        console.warn('⚠️  WARNING: REDIS_PASSWORD not set in production! This is a security risk.')
+      }
+
+      // Validate secure Redis URL (should use TLS in production)
+      if (!parsed.REDIS_URL.startsWith('rediss://') && !parsed.REDIS_URL.includes('localhost')) {
+        console.warn('⚠️  WARNING: REDIS_URL should use TLS (rediss://) in production for security')
       }
     }
 

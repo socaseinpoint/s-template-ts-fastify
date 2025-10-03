@@ -10,7 +10,6 @@ import { AuthService } from '@/modules/auth'
 import { UserService, UserRepository, type IUserRepository } from '@/modules/users'
 import { ItemService, ItemRepository, type IItemRepository } from '@/modules/items'
 import { RedisTokenRepository, type ITokenRepository } from '@/shared/cache/redis-token.repository'
-import { InMemoryTokenRepository } from '@/shared/cache/in-memory-token.repository'
 
 // Queue services
 import { QueueService } from '@/shared/queue/queue.service'
@@ -22,7 +21,7 @@ const logger = new Logger('Container')
 export interface ICradle {
   // Infrastructure
   prisma: PrismaClient
-  redis?: FastifyRedis // Optional (fallback to in-memory in development)
+  redis: FastifyRedis // REQUIRED for production video service
   metrics?: {
     queueJobsProcessed: unknown
     queueJobDuration: unknown
@@ -49,7 +48,7 @@ export interface ICradle {
 
 export interface ContainerOptions {
   prisma?: PrismaClient
-  redis?: FastifyRedis // Optional (fallback to in-memory in development)
+  redis: FastifyRedis // REQUIRED - Redis is mandatory for video service
   skipConnect?: boolean
   enableQueues?: boolean // Enable queue services (for MODE=all)
   redisConnection?: IORedis // IORedis connection for BullMQ (separate from Fastify Redis)
@@ -113,11 +112,18 @@ export async function createDIContainer(
     prisma: asValue(prismaClient),
   })
 
-  // Register Redis (required)
+  // Register Redis (required for all services)
+  if (!options.redis) {
+    throw new Error(
+      '❌ Redis is required but not provided to container. ' +
+        'This should never happen - check app.ts initialization.'
+    )
+  }
+
   container.register({
     redis: asValue(options.redis),
   })
-  logger.info('✅ Redis registered for distributed token storage')
+  logger.info('✅ Redis registered for queues, caching, and token storage')
 
   // Register repositories with SINGLETON lifetime
   // Since repositories are stateless and only depend on Prisma/Redis,
@@ -127,30 +133,11 @@ export async function createDIContainer(
     itemRepository: asClass(ItemRepository, { lifetime: Lifetime.SINGLETON }),
   })
 
-  // Register token repository (Redis or in-memory fallback)
-  const { validateRedisConfig: validateRedisForTokens } = await import(
-    '@/shared/utils/env-validation'
-  )
-
-  // Validate Redis for token storage
-  validateRedisForTokens({
-    redisUrl: process.env.REDIS_URL,
-    redisHost: process.env.REDIS_HOST,
-    nodeEnv: process.env.NODE_ENV || 'development',
-    context: 'token storage',
+  // Register token repository (Redis only - no fallback)
+  container.register({
+    tokenRepository: asClass(RedisTokenRepository, { lifetime: Lifetime.SINGLETON }),
   })
-
-  if (options.redis) {
-    container.register({
-      tokenRepository: asClass(RedisTokenRepository, { lifetime: Lifetime.SINGLETON }),
-    })
-    logger.info('✅ Token storage: Redis (distributed)')
-  } else {
-    container.register({
-      tokenRepository: asClass(InMemoryTokenRepository, { lifetime: Lifetime.SINGLETON }),
-    })
-    logger.warn('⚠️  Token storage: In-Memory (development only)')
-  }
+  logger.info('✅ Token storage: Redis (distributed)')
 
   // Register business services with SINGLETON lifetime
   // Services are stateless - all state is passed through method parameters
@@ -190,7 +177,7 @@ export async function createDIContainer(
     logger.info('✅ Queue services registered')
   }
 
-  logger.info('✅ DI Container initialized (Token storage: Redis)')
+  logger.info('✅ DI Container initialized successfully')
 
   return container
 }
