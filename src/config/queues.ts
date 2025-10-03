@@ -2,7 +2,7 @@ import { Config } from '@/config'
 
 /**
  * Queue Configuration
- * 
+ *
  * Define per-queue settings for different job types:
  * - CPU-heavy jobs (video encoding, AI): Low concurrency (1-2)
  * - I/O-heavy jobs (API calls, webhooks): High concurrency (10-20)
@@ -24,8 +24,8 @@ export interface QueueConfig {
  * Queue configurations by name
  */
 export const QUEUE_CONFIGS: Record<string, QueueConfig> = {
-  // Webhook Processor - I/O heavy (HTTP requests)
-  'webhook-processor': {
+  // Webhook - I/O heavy (HTTP requests)
+  webhook: {
     concurrency: Config.QUEUE_CONCURRENCY || 10,
     removeOnComplete: 100,
     removeOnFail: 1000,
@@ -95,7 +95,7 @@ export function getQueueConfig(queueName: string): QueueConfig {
 /**
  * Override queue configuration with environment variables
  * Useful for production tuning without code changes
- * 
+ *
  * Example env vars:
  *   QUEUE_WEBHOOK_PROCESSOR_CONCURRENCY=15
  *   QUEUE_VIDEO_GENERATION_CONCURRENCY=1
@@ -116,4 +116,3 @@ export function getQueueConfigWithEnvOverrides(queueName: string): QueueConfig {
 
   return baseConfig
 }
-

@@ -74,7 +74,7 @@ function sanitizeObject(obj: any, depth = 0, maxDepth = 10): any {
  */
 export async function sanitizeInput(
   request: FastifyRequest,
-  reply: FastifyReply,
+  _reply: FastifyReply,
   done: HookHandlerDoneFunction
 ): Promise<void> {
   try {

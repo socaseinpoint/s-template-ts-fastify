@@ -16,8 +16,7 @@ import { Logger } from '@/shared/utils/logger'
 import { Config } from '@/config'
 import { createRedisConnection, closeRedisConnection } from '@/shared/queue/redis-connection'
 import { WorkerService } from '@/shared/queue/worker.service'
-import { processWebhookJob } from '@/modules/jobs/webhook-processor.worker'
-import { QUEUE_NAMES } from '@/modules/jobs/webhook-processor.queue'
+import { processWebhookJob, QUEUE_NAMES } from '@/jobs/webhook'
 import { getQueueConfigWithEnvOverrides } from '@/config/queues'
 
 const logger = new Logger('Worker')
@@ -25,18 +24,49 @@ const logger = new Logger('Worker')
 /**
  * Worker Entry Point
  *
- * This file starts ONLY the worker process (no API server).
- * It connects to Redis and processes jobs from queues.
+ * =============================================================================
+ * WORKER ROLE: Process jobs by calling external APIs (Replicate, OpenAI, etc.)
+ * =============================================================================
+ *
+ * What Worker Does:
+ * -----------------
+ * ✅ Make HTTP calls to external APIs (Replicate, OpenAI, Stripe, etc.)
+ * ✅ Return result data to BullMQ
+ * ✅ Retry on failure (automatic via BullMQ)
+ * ✅ Run in parallel (multiple worker instances)
+ *
+ * What Worker Does NOT Do:
+ * ------------------------
+ * ❌ Write to database (use event handlers in API instead)
+ * ❌ Complex business logic (keep in API/services)
+ * ❌ Direct user communication (API handles this)
+ * ❌ Trigger next pipeline steps (API orchestrates via events)
+ *
+ * Why This Separation?
+ * --------------------
+ * 1. Avoid race conditions (only API writes to DB)
+ * 2. Lightweight workers (no DB connections = fast & scalable)
+ * 3. Clear responsibility (worker = external calls, API = state management)
+ * 4. Easy debugging (single source of truth for DB writes)
+ *
+ * Database Access Pattern:
+ * ------------------------
+ * Worker returns result → API event handler writes to DB
+ *
+ * Example:
+ *   // Worker (NO DB)
+ *   return { predictionId: 'abc123', output: '...' }
+ *
+ *   // API event handler (writes to DB)
+ *   queue.on('completed', async (job, result) => {
+ *     await prisma.update({ data: result })
+ *   })
+ *
+ * See: docs/ARCHITECTURE_PRINCIPLES.md for detailed explanation
  *
  * Usage:
  *   MODE=worker npm run dev:worker   # Development
  *   MODE=worker npm start:worker     # Production
- *
- * Features:
- * - Processes jobs from BullMQ queues
- * - Graceful shutdown
- * - Error handling
- * - Multiple workers can run in parallel
  */
 
 let redisConnection: ReturnType<typeof createRedisConnection> | undefined
@@ -78,18 +108,18 @@ async function startWorker() {
       })
     })
 
-    // Create worker service
+    // Create worker service (no DI - workers are dumb HTTP callers)
     workerService = new WorkerService(redisConnection)
 
     // Register workers for each queue with per-queue configuration
     logger.info('Registering workers...')
 
     // Webhook processor worker
-    const webhookConfig = getQueueConfigWithEnvOverrides(QUEUE_NAMES.WEBHOOK_PROCESSOR)
-    workerService.createWorker(QUEUE_NAMES.WEBHOOK_PROCESSOR, processWebhookJob, {
+    const webhookConfig = getQueueConfigWithEnvOverrides(QUEUE_NAMES.WEBHOOK)
+    workerService.createWorker(QUEUE_NAMES.WEBHOOK, processWebhookJob, {
       concurrency: webhookConfig.concurrency,
     })
-    logger.info(`📋 ${QUEUE_NAMES.WEBHOOK_PROCESSOR}: concurrency=${webhookConfig.concurrency}`)
+    logger.info(`📋 ${QUEUE_NAMES.WEBHOOK}: concurrency=${webhookConfig.concurrency}`)
 
     // Add more workers here with their own configurations:
     // const videoConfig = getQueueConfigWithEnvOverrides('video-generation')
@@ -135,7 +165,7 @@ function setupShutdownHandlers() {
         logger.info('✅ Workers closed')
       }
 
-      // 2. Close Redis connection
+      // 2. Close Redis connection (BullMQ)
       if (redisConnection) {
         logger.info('Closing Redis connection...')
         await closeRedisConnection(redisConnection)

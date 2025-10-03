@@ -1,9 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import jwt from 'jsonwebtoken'
-import { Config } from '@/config'
 import { Role } from '@prisma/client'
 import type { IUserRepository } from '@/modules/users/user.repository'
 import type { ITokenRepository } from '@/shared/cache/redis-token.repository'
+
+// Mock Config before importing anything else
+vi.mock('@/config', () => ({
+  Config: {
+    JWT_SECRET: 'test-secret-key-min-64-chars-for-testing-purposes-only-never-in-prod',
+    JWT_ACCESS_EXPIRES_IN: '15m',
+    JWT_REFRESH_EXPIRES_IN: '7d',
+    NODE_ENV: 'test',
+    MODE: 'all',
+    LOG_LEVEL: 'silent',
+  },
+  getConfig: vi.fn(() => ({
+    JWT_SECRET: 'test-secret-key-min-64-chars-for-testing-purposes-only-never-in-prod',
+    JWT_ACCESS_EXPIRES_IN: '15m',
+    JWT_REFRESH_EXPIRES_IN: '7d',
+    NODE_ENV: 'test',
+  })),
+}))
+
+import { Config } from '@/config'
 
 // Mock PasswordUtils
 vi.mock('@/shared/utils/password', () => ({

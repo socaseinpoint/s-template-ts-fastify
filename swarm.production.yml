@@ -1,0 +1,234 @@
+version: '3.8'
+
+# =============================================================================
+# Docker Swarm Production Deployment
+# =============================================================================
+# This file defines multi-server deployment with separate worker types
+#
+# Usage:
+#   docker stack deploy -c swarm.production.yml myapp
+#
+# Servers:
+#   - Manager nodes: API + orchestration
+#   - Worker nodes: I/O workers + FFmpeg workers (different hardware!)
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # API Service (Light - 2 CPU, 4GB RAM)
+  # ===========================================================================
+  api:
+    image: ${REGISTRY_URL}/myapp-api:${VERSION:-latest}
+    environment:
+      - NODE_ENV=production
+      - MODE=api
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - API_BASE_URL=${API_BASE_URL}
+      - ENABLE_SWAGGER=false
+      - ENABLE_RATE_LIMIT=true
+    networks:
+      - app-network
+    ports:
+      - "3000:3000"
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == manager  # API на manager nodes
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ===========================================================================
+  # I/O Workers (Medium - 1 CPU, 2GB RAM)
+  # ===========================================================================
+  # Handles: OpenAI, Replicate API calls, S3 downloads
+  # ===========================================================================
+  worker-io:
+    image: ${REGISTRY_URL}/myapp-worker:${VERSION:-latest}
+    environment:
+      - NODE_ENV=production
+      - MODE=worker
+      - WORKER_TYPE=io
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - QUEUE_CONCURRENCY=10
+      - API_BASE_URL=${API_BASE_URL}
+    networks:
+      - app-network
+    deploy:
+      replicas: 3
+      placement:
+        constraints:
+          - node.labels.worker-type == io  # На I/O worker nodes
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  # ===========================================================================
+  # FFmpeg Workers (Heavy - 4 CPU, 8GB RAM) 🔥
+  # ===========================================================================
+  # Handles: Video merging with FFmpeg (CPU-intensive!)
+  # ===========================================================================
+  worker-ffmpeg:
+    image: ${REGISTRY_URL}/myapp-worker-ffmpeg:${VERSION:-latest}
+    environment:
+      - NODE_ENV=production
+      - MODE=worker
+      - WORKER_TYPE=ffmpeg
+      - REDIS_URL=${REDIS_URL}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - QUEUE_CONCURRENCY=1  # LOW concurrency for CPU-bound!
+    networks:
+      - app-network
+    volumes:
+      - /tmp:/tmp  # For temp video files
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.worker-type == ffmpeg  # На мощных CPU nodes!
+      resources:
+        limits:
+          cpus: '4'      # More CPU for FFmpeg!
+          memory: 8G     # More RAM for video processing!
+        reservations:
+          cpus: '2'
+          memory: 4G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+
+  # ===========================================================================
+  # S3 Upload Workers (Medium - 1 CPU, 2GB RAM)
+  # ===========================================================================
+  # Handles: Large file uploads to S3
+  # ===========================================================================
+  worker-upload:
+    image: ${REGISTRY_URL}/myapp-worker:${VERSION:-latest}
+    environment:
+      - NODE_ENV=production
+      - MODE=worker
+      - WORKER_TYPE=upload
+      - REDIS_URL=${REDIS_URL}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - QUEUE_CONCURRENCY=5
+    networks:
+      - app-network
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.worker-type == io
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # ===========================================================================
+  # GPU Workers (Optional - for custom ML models)
+  # ===========================================================================
+  # ONLY deploy if you have GPU nodes!
+  # Uncomment this section if using local GPU inference
+  # ===========================================================================
+  # worker-gpu:
+  #   image: ${REGISTRY_URL}/myapp-worker-gpu:${VERSION:-latest}
+  #   environment:
+  #     - NODE_ENV=production
+  #     - MODE=worker
+  #     - WORKER_TYPE=gpu
+  #     - REDIS_URL=${REDIS_URL}
+  #     - NVIDIA_VISIBLE_DEVICES=all
+  #     - QUEUE_CONCURRENCY=1
+  #   networks:
+  #     - app-network
+  #   deploy:
+  #     replicas: 1
+  #     placement:
+  #       constraints:
+  #         - node.labels.gpu == nvidia
+  #     resources:
+  #       limits:
+  #         cpus: '4'
+  #         memory: 16G
+  #       reservations:
+  #         cpus: '2'
+  #         memory: 8G
+  #         generic_resources:
+  #           - discrete_resource_spec:
+  #               kind: 'gpu'
+  #               value: 1
+
+networks:
+  app-network:
+    driver: overlay
+    attachable: true
+
+# =============================================================================
+# Server Labeling Commands
+# =============================================================================
+# 
+# Label your nodes for worker placement:
+#
+# Manager nodes (for API):
+#   docker node update --label-add worker-type=manager node1
+#
+# I/O worker nodes (medium CPU):
+#   docker node update --label-add worker-type=io node2
+#   docker node update --label-add worker-type=io node3
+#
+# FFmpeg worker nodes (high CPU!):
+#   docker node update --label-add worker-type=ffmpeg node4
+#   docker node update --label-add worker-type=ffmpeg node5
+#
+# Deploy:
+#   docker stack deploy -c swarm.production.yml myapp
+#
+# Scale individual services:
+#   docker service scale myapp_worker-io=5
+#   docker service scale myapp_worker-ffmpeg=3
+#
+# =============================================================================
+

@@ -15,7 +15,7 @@ import { InMemoryTokenRepository } from '@/shared/cache/in-memory-token.reposito
 // Queue services
 import { QueueService } from '@/shared/queue/queue.service'
 import { WorkerService } from '@/shared/queue/worker.service'
-import { QUEUE_NAMES, type WebhookJobData } from '@/modules/jobs'
+import { QUEUE_NAMES, type WebhookJobData } from '@/jobs'
 
 const logger = new Logger('Container')
 
@@ -23,6 +23,10 @@ export interface ICradle {
   // Infrastructure
   prisma: PrismaClient
   redis?: FastifyRedis // Optional (fallback to in-memory in development)
+  metrics?: {
+    queueJobsProcessed: any
+    queueJobDuration: any
+  }
 
   // Repositories
   userRepository: IUserRepository
@@ -173,7 +177,7 @@ export async function createDIContainer(
     if (!queueService) {
       throw new Error('QueueService not initialized')
     }
-    const webhookQueue = queueService.createQueue<WebhookJobData>(QUEUE_NAMES.WEBHOOK_PROCESSOR)
+    const webhookQueue = queueService.createQueue<WebhookJobData>(QUEUE_NAMES.WEBHOOK)
 
     // Register queues in container
     container.register({

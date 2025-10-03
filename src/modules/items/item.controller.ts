@@ -181,4 +181,3 @@ export default async function itemController(fastify: FastifyInstance) {
     }
   )
 }
-

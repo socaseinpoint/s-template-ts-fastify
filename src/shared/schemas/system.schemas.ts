@@ -26,4 +26,3 @@ export const welcomeResponseSchema = z.object({
 })
 
 export type WelcomeResponse = z.infer<typeof welcomeResponseSchema>
-

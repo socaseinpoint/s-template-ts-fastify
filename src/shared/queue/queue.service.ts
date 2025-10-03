@@ -88,7 +88,7 @@ export class QueueService {
   ) {
     logger.debug(`Adding job '${jobName}' to queue '${queue.name}'`)
 
-    const job = await queue.add(jobName, data, options)
+    const job = await queue.add(jobName as any, data as any, options)
 
     logger.info(`✅ Job '${jobName}' added to queue '${queue.name}' (ID: ${job.id})`)
 

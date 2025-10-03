@@ -108,24 +108,66 @@ async function startWorkers(container: Awaited<DIContainer>) {
   logger.info('Registering workers...')
 
   // Import worker processors
-  const { processWebhookJob } = await import('@/modules/jobs/webhook-processor.worker')
-  const { QUEUE_NAMES } = await import('@/modules/jobs/webhook-processor.queue')
+  const { processWebhookJob, QUEUE_NAMES } = await import('@/jobs/webhook')
   const { getQueueConfigWithEnvOverrides } = await import('@/config/queues')
 
   // Register workers with per-queue configuration
-  const webhookConfig = getQueueConfigWithEnvOverrides(QUEUE_NAMES.WEBHOOK_PROCESSOR)
-  workerService.createWorker(QUEUE_NAMES.WEBHOOK_PROCESSOR, processWebhookJob, {
+  const webhookConfig = getQueueConfigWithEnvOverrides(QUEUE_NAMES.WEBHOOK)
+  workerService.createWorker(QUEUE_NAMES.WEBHOOK, processWebhookJob, {
     concurrency: webhookConfig.concurrency,
   })
 
   logger.info('✅ All workers registered successfully')
-  logger.info(`🔄 ${QUEUE_NAMES.WEBHOOK_PROCESSOR}: concurrency=${webhookConfig.concurrency}`)
+  logger.info(`🔄 ${QUEUE_NAMES.WEBHOOK}: concurrency=${webhookConfig.concurrency}`)
+
+  // =============================================
+  // Setup Queue Event Handlers
+  // =============================================
+  // Event handlers process worker results and write to database
+  // This is where business logic and DB updates happen
+  setupQueueEventHandlers(container)
+
   // Add more workers here with their own configurations:
   // const videoConfig = getQueueConfigWithEnvOverrides('video-generation')
   // workerService.createWorker('video-generation', processVideoJob, {
   //   concurrency: videoConfig.concurrency,
-  //   removeOnComplete: videoConfig.removeOnComplete,
-  //   removeOnFail: videoConfig.removeOnFail,
+  // })
+}
+
+/**
+ * Setup queue event handlers for processing worker results
+ *
+ * Pattern: Worker returns data → Event handler writes to DB
+ * This separates concerns and prevents race conditions
+ */
+async function setupQueueEventHandlers(container: Awaited<DIContainer>) {
+  const webhookQueue = container.cradle.webhookQueue
+  if (!webhookQueue) return
+
+  const logger = new Logger('QueueEvents')
+
+  // =============================================
+  // Event Handlers: Process worker results
+  // =============================================
+  // Note: Use QueueEvents for reliable event handling in distributed systems
+  // For simple setups, worker.on() events work fine (see worker.service.ts)
+
+  logger.info('✅ Queue event handlers registered')
+  logger.info('ℹ️  Job events are handled by WorkerService (see shared/queue/worker.service.ts)')
+
+  // For custom business logic, add handlers here:
+  // Example pattern (uncomment to use):
+  //
+  // const queueEvents = new QueueEvents('webhook-processor', { connection: redisConnection })
+  //
+  // queueEvents.on('completed', async ({ jobId, returnvalue }) => {
+  //   logger.info(`Job ${jobId} completed`)
+  //   // Save to DB, trigger next step, etc.
+  // })
+  //
+  // queueEvents.on('failed', async ({ jobId, failedReason }) => {
+  //   logger.error(`Job ${jobId} failed: ${failedReason}`)
+  //   // Handle failure
   // })
 }
 

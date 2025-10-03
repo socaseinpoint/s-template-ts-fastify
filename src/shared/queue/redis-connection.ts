@@ -76,4 +76,3 @@ export async function closeRedisConnection(connection: IORedis): Promise<void> {
     connection.disconnect()
   }
 }
-

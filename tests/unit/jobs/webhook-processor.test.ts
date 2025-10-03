@@ -9,8 +9,7 @@ vi.mock('@/config', () => ({
   },
 }))
 
-import { processWebhookJob } from '@/modules/jobs/webhook-processor.worker'
-import type { WebhookJobData } from '@/modules/jobs/webhook-processor.queue'
+import { processWebhookJob, type WebhookJobData } from '@/jobs/webhook'
 
 interface MockJob {
   id: string
@@ -76,25 +75,22 @@ describe('WebhookProcessor', () => {
         updateProgress: vi.fn(),
       }
 
-      // The webhook processor has a 10% chance of failure
-      // We'll run multiple times to test error handling
-      let errorThrown = false
+    // Mock Math.random to force failure
+    const originalRandom = Math.random
+    Math.random = vi.fn(() => 0.05) // < 0.1 = triggers failure
 
-      for (let i = 0; i < 20; i++) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await processWebhookJob(mockJob as any)
-        } catch (error) {
-          errorThrown = true
-          expect(error).toBeInstanceOf(Error)
-          expect((error as Error).message).toContain('webhook')
-          break
-        }
-      }
-
-      // At least one attempt should have failed (statistically)
-      // If this test is flaky, we can mock Math.random
-      expect(errorThrown || mockJob.updateProgress).toBeTruthy()
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await processWebhookJob(mockJob as any)
+      
+      // Should not reach here
+      expect.fail('Expected error to be thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toBe('Simulated failure')
+    } finally {
+      Math.random = originalRandom
+    }
     })
 
     it('should include job metadata in logs', async () => {

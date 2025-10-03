@@ -114,17 +114,12 @@ export class WorkerService {
 
     // Job is active (processing started)
     worker.on('active', (job: Job) => {
-      logger.debug(`⚙️  Job ${job.id} started in queue '${queueName}'`, {
-        jobId: job.id,
-        jobName: job.name,
-      })
+      logger.debug(`⚙️  Job ${job.id} started in queue '${queueName}'`)
     })
 
     // Job progress updated
     worker.on('progress', (job: Job) => {
-      logger.debug(`📊 Job ${job.id} progress in queue '${queueName}'`, {
-        jobId: job.id,
-      })
+      logger.debug(`📊 Job ${job.id} progress in queue '${queueName}'`)
     })
   }
 

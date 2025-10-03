@@ -1,0 +1,227 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main      # Production
+      - develop   # Staging
+  workflow_dispatch: # Manual trigger
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # =============================================================================
+  # Build and Push Docker Images
+  # =============================================================================
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    strategy:
+      matrix:
+        service:
+          - name: api
+            dockerfile: Dockerfile
+            context: .
+          - name: worker
+            dockerfile: Dockerfile.worker
+            context: .
+          - name: worker-ffmpeg
+            dockerfile: Dockerfile.ffmpeg
+            context: .
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service.name }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # =============================================================================
+  # Determine Environment
+  # =============================================================================
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      database_url_secret: ${{ steps.set-env.outputs.database_url_secret }}
+      deploy_host_secret: ${{ steps.set-env.outputs.deploy_host_secret }}
+      swarm_file: ${{ steps.set-env.outputs.swarm_file }}
+      stack_name: ${{ steps.set-env.outputs.stack_name }}
+      image_tag: ${{ steps.set-env.outputs.image_tag }}
+    
+    steps:
+      - name: Set environment variables
+        id: set-env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            ENV="production"
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            ENV="staging"
+          else
+            ENV="staging"
+          fi
+          
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "database_url_secret=DATABASE_URL_${ENV^^}" >> $GITHUB_OUTPUT
+          echo "deploy_host_secret=DEPLOY_HOST_${ENV^^}" >> $GITHUB_OUTPUT
+          echo "swarm_file=swarm.${ENV}.yml" >> $GITHUB_OUTPUT
+          echo "stack_name=myapp-${ENV}" >> $GITHUB_OUTPUT
+          
+          if [[ "$ENV" == "production" ]]; then
+            echo "image_tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "image_tag=staging" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "🎯 Deploying to: $ENV"
+
+  # =============================================================================
+  # Run Database Migrations
+  # =============================================================================
+  migrate:
+    runs-on: ubuntu-latest
+    needs: [build, setup]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run Prisma migrations
+        env:
+          DATABASE_URL: ${{ secrets[needs.setup.outputs.database_url_secret] }}
+        run: |
+          echo "Running migrations for ${{ needs.setup.outputs.environment }}"
+          npx prisma migrate deploy
+          echo "✅ Migrations completed"
+
+  # =============================================================================
+  # Deploy to Docker Swarm
+  # =============================================================================
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build, migrate, setup]
+    environment: ${{ needs.setup.outputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy to Swarm
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets[format('DEPLOY_HOST_{0}', needs.setup.outputs.environment == 'production' && 'PRODUCTION' || 'STAGING')] }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            # Login to registry
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Pull images
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ needs.setup.outputs.image_tag }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-worker:${{ needs.setup.outputs.image_tag }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-worker-ffmpeg:${{ needs.setup.outputs.image_tag }}
+            
+            # Deploy stack
+            cd /opt/myapp-${{ needs.setup.outputs.environment }}
+            export IMAGE_TAG=${{ needs.setup.outputs.image_tag }}
+            export REGISTRY_URL=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            export VERSION=${{ needs.setup.outputs.image_tag }}
+            
+            docker stack deploy -c ${{ needs.setup.outputs.swarm_file }} ${{ needs.setup.outputs.stack_name }} --with-registry-auth
+            
+            echo "✅ Deployment completed to ${{ needs.setup.outputs.environment }}"
+      
+      - name: Wait for deployment
+        run: sleep 30
+      
+      - name: Health Check
+        env:
+          API_URL: ${{ secrets[format('API_URL_{0}', needs.setup.outputs.environment == 'production' && 'PRODUCTION' || 'STAGING')] }}
+        run: |
+          curl -f $API_URL/health || exit 1
+          echo "✅ Health check passed for ${{ needs.setup.outputs.environment }}"
+      
+      - name: Deployment Summary
+        run: |
+          echo "🎉 Deployed to ${{ needs.setup.outputs.environment }}!"
+          echo "Environment: ${{ needs.setup.outputs.environment }}"
+          echo "Image tag: ${{ needs.setup.outputs.image_tag }}"
+          echo "Stack name: ${{ needs.setup.outputs.stack_name }}"
+      
+      - name: Notify Deployment
+        if: success()
+        run: |
+          echo "🚀 Deployment successful!"
+          # Add Slack/Discord notification here if needed
+
+  # =============================================================================
+  # Rollback on Failure
+  # =============================================================================
+  rollback:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    
+    steps:
+      - name: Rollback Deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/myapp
+            docker stack deploy -c swarm.production.yml myapp --prune
+            echo "⚠️ Rolled back to previous version"
+

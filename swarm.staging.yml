@@ -1,0 +1,128 @@
+version: '3.8'
+
+# =============================================================================
+# Docker Swarm Staging Environment
+# =============================================================================
+# Staging environment for testing before production
+# Lower resources, same architecture as production
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # API Service (Staging)
+  # ===========================================================================
+  api:
+    image: ${REGISTRY_URL}/myapp-api:${VERSION:-staging}
+    environment:
+      - NODE_ENV=production
+      - MODE=api
+      - DATABASE_URL=${DATABASE_URL_STAGING}
+      - REDIS_URL=${REDIS_URL_STAGING}
+      - JWT_SECRET=${JWT_SECRET_STAGING}
+      - CORS_ORIGIN=${CORS_ORIGIN_STAGING:-*}
+      - API_BASE_URL=${API_BASE_URL_STAGING}
+      - ENABLE_SWAGGER=true  # Enabled in staging
+      - ENABLE_RATE_LIMIT=true
+      - LOG_LEVEL=debug  # More verbose in staging
+    networks:
+      - app-network
+    ports:
+      - "3000:3000"
+    deploy:
+      replicas: 1  # Single instance in staging
+      placement:
+        constraints:
+          - node.labels.env == staging
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================================================
+  # I/O Workers (Staging)
+  # ===========================================================================
+  worker-io:
+    image: ${REGISTRY_URL}/myapp-worker:${VERSION:-staging}
+    environment:
+      - NODE_ENV=production
+      - MODE=worker
+      - WORKER_TYPE=io
+      - REDIS_URL=${REDIS_URL_STAGING}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - API_BASE_URL=${API_BASE_URL_STAGING}
+      - QUEUE_CONCURRENCY=5  # Lower in staging
+      - LOG_LEVEL=debug
+    networks:
+      - app-network
+    deploy:
+      replicas: 1  # Single worker in staging
+      placement:
+        constraints:
+          - node.labels.env == staging
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+
+  # ===========================================================================
+  # FFmpeg Workers (Staging)
+  # ===========================================================================
+  worker-ffmpeg:
+    image: ${REGISTRY_URL}/myapp-worker-ffmpeg:${VERSION:-staging}
+    environment:
+      - NODE_ENV=production
+      - MODE=worker
+      - WORKER_TYPE=ffmpeg
+      - REDIS_URL=${REDIS_URL_STAGING}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET=${S3_BUCKET_STAGING}
+      - QUEUE_CONCURRENCY=1
+      - LOG_LEVEL=debug
+    networks:
+      - app-network
+    volumes:
+      - /tmp:/tmp
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.env == staging
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+networks:
+  app-network:
+    driver: overlay
+    attachable: true
+
+# =============================================================================
+# Staging Setup Commands
+# =============================================================================
+#
+# Label staging node:
+#   docker node update --label-add env=staging node1
+#
+# Deploy to staging:
+#   docker stack deploy -c swarm.staging.yml myapp-staging
+#
+# View logs:
+#   docker service logs -f myapp-staging_api
+#
+# =============================================================================
+

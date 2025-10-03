@@ -1,6 +1,6 @@
 /**
  * Items Module - Public API
- * 
+ *
  * Exports only what's needed by other modules and infrastructure:
  * - Service (for DI container)
  * - Repository interface (for DI and testing)
@@ -24,4 +24,3 @@ export type { ItemResponseDto } from './item.dto'
 
 // Internal types (request DTOs, schemas, pagination) are NOT exported
 // They are HTTP layer implementation details
-

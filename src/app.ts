@@ -187,6 +187,10 @@ export async function createApp(): Promise<AppContext> {
   // Register JWT plugin (with auth decorators)
   await fastify.register(jwtPlugin)
 
+  // Register monitoring plugin (Bull Board + Prometheus)
+  const { monitoringPlugin } = await import('@/shared/plugins/monitoring.plugin')
+  await fastify.register(monitoringPlugin)
+
   // Register Swagger
   if (Config.ENABLE_SWAGGER) {
     await fastify.register(fastifySwagger, swaggerConfig)

@@ -1,0 +1,82 @@
+# =============================================================================
+# Dockerfile for FFmpeg Worker (CPU-intensive video processing)
+# =============================================================================
+# This worker handles video merging, encoding, and transcoding using FFmpeg
+#
+# Usage:
+#   docker build -f Dockerfile.ffmpeg -t myapp-worker-ffmpeg .
+#   docker run -e WORKER_TYPE=ffmpeg myapp-worker-ffmpeg
+#
+# Requirements:
+#   - More CPU cores (2-4)
+#   - More RAM (4-8GB)
+#   - Temp disk space (5-10GB)
+# =============================================================================
+
+# Stage 1: Base with FFmpeg
+FROM node:20-alpine AS base
+
+WORKDIR /app
+
+# Install FFmpeg (critical for video processing!)
+RUN apk add --no-cache \
+    ffmpeg \
+    python3 \
+    make \
+    g++
+
+# Stage 2: Dependencies
+FROM base AS deps
+
+COPY package*.json ./
+RUN npm ci
+
+# Stage 3: Build
+FROM base AS builder
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+RUN npx prisma generate
+
+# Stage 4: Production
+FROM base AS runner
+
+# Add non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 worker
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install production dependencies
+RUN npm ci --production && \
+    npm cache clean --force
+
+# Copy built app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY prisma ./prisma
+
+# Create temp directory for FFmpeg
+RUN mkdir -p /tmp/ffmpeg && \
+    chown -R worker:nodejs /tmp/ffmpeg && \
+    chown -R worker:nodejs /app
+
+# Switch to non-root
+USER worker
+
+# Environment
+ENV NODE_ENV=production \
+    MODE=worker \
+    WORKER_TYPE=ffmpeg
+
+# Health check (FFmpeg availability)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD ffmpeg -version || exit 1
+
+# Start worker
+CMD ["npm", "run", "start:worker"]
+
