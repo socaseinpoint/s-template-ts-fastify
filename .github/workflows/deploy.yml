@@ -210,18 +210,30 @@ jobs:
   # =============================================================================
   rollback:
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: [deploy, setup]
     if: failure()
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
       - name: Rollback Deployment
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ secrets[format('DEPLOY_HOST_{0}', needs.setup.outputs.environment == 'production' && 'PRODUCTION' || 'STAGING')] }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd /opt/myapp
-            docker stack deploy -c swarm.production.yml myapp --prune
-            echo "⚠️ Rolled back to previous version"
+            # Rollback to previous version
+            cd /opt/myapp-${{ needs.setup.outputs.environment }}
+            
+            echo "⚠️ Rolling back ${{ needs.setup.outputs.stack_name }} to previous version..."
+            
+            # Get list of services
+            docker service ls --filter "label=com.docker.stack.namespace=${{ needs.setup.outputs.stack_name }}" --format "{{.Name}}" | while read service; do
+              echo "Rolling back service: $service"
+              docker service rollback $service --detach=false || echo "⚠️ Failed to rollback $service"
+            done
+            
+            echo "✅ Rollback completed for ${{ needs.setup.outputs.environment }}"
 

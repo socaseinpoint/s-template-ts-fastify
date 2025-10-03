@@ -9,17 +9,25 @@ Production-ready Fastify + BullMQ template with workers, monitoring, and CI/CD.
 ## Quick Start
 
 ```bash
-# 1. Install
+# 1. Install dependencies
 npm install
 
-# 2. Setup
+# 2. Setup environment
 cp .env.example .env
-npm run docker:up
 
-# 3. Database
-npm run prisma:generate && npm run prisma:migrate
+# 3. Generate JWT secret (REQUIRED!)
+openssl rand -base64 64
+# Copy output to JWT_SECRET in .env
 
-# 4. Run
+# 4. Start Docker services (PostgreSQL + Redis)
+docker compose -f docker-compose.dev.yml up -d
+
+# 5. Setup database
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:seed
+
+# 6. Run development server
 npm run dev
 ```
 
@@ -120,6 +128,7 @@ curl http://localhost:3000/health
 - 🚀 [Deployment](./docs/DEPLOYMENT.md) - Production guide
 - 📈 [Scaling](./docs/SCALING_GUIDE.md) - How to scale
 - 🧪 [Testing](./docs/TESTING.md) - Testing guide
+- 💻 [Commands](./docs/COMMANDS.md) - Docker & utility commands
 
 ---
 

@@ -11,20 +11,25 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  phone     String?
-  role      Role     @default(USER)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String    @id @default(uuid())
+  email          String    @unique
+  password       String
+  name           String
+  phone          String?
+  role           Role      @default(USER)
+  isActive       Boolean   @default(true)
+  emailVerified  Boolean   @default(false)
+  emailVerifiedAt DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime? // Soft delete
   
   items     Item[]
   tokens    Token[]
   
   @@index([email])
+  @@index([deletedAt])
 }
 
 model Item {
@@ -43,10 +48,12 @@ model Item {
   
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?    // Soft delete
   
   @@index([userId])
   @@index([category])
   @@index([status])
+  @@index([deletedAt])
 }
 
 model Token {

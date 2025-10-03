@@ -315,7 +315,37 @@ function getCorsOrigin(): string | string[] {
         '❌ SECURITY: CORS_ORIGIN=* is not allowed in production! Set specific domains (e.g., https://app.example.com)'
       )
     }
-    return Config.CORS_ORIGIN.split(',').map(o => o.trim())
+
+    // Parse and validate each origin
+    const origins = Config.CORS_ORIGIN.split(',').map(o => o.trim())
+
+    // Check if any origin is a wildcard
+    const hasWildcard = origins.some(origin => origin === '*')
+    if (hasWildcard) {
+      throw new Error(
+        '❌ SECURITY: Wildcard (*) found in CORS_ORIGIN list! ' +
+          'Remove wildcard and specify exact domains. ' +
+          `Current: ${Config.CORS_ORIGIN}`
+      )
+    }
+
+    // Validate each origin is a valid URL or localhost
+    for (const origin of origins) {
+      if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+        // Allow localhost for staging/testing
+        continue
+      }
+
+      if (!origin.startsWith('https://')) {
+        throw new Error(
+          `❌ SECURITY: Invalid origin "${origin}" - production origins must use HTTPS! ` +
+            'Use format: https://domain.com'
+        )
+      }
+    }
+
+    logger.info(`CORS origins configured: ${origins.join(', ')}`)
+    return origins
   }
 
   logger.info('Development mode - CORS set to wildcard (*)')

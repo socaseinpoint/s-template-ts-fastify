@@ -28,9 +28,14 @@ const envSchema = z.object({
   API_KEY: z.string().optional(),
 
   // JWT Configuration - MUST be strong (64+ chars) in production
+  // REQUIRED: No default value - application will crash if not set
+  // Generate with: openssl rand -base64 64
   JWT_SECRET: z
     .string()
-    .min(64, 'JWT_SECRET must be at least 64 characters for security')
+    .min(
+      64,
+      '❌ JWT_SECRET must be at least 64 characters for security. Generate with: openssl rand -base64 64'
+    )
     .refine(
       val => {
         // In production, enforce strong entropy and no weak patterns
@@ -60,8 +65,7 @@ const envSchema = z.object({
         message:
           '❌ SECURITY: JWT_SECRET validation failed! Generate secure secret: openssl rand -base64 64',
       }
-    )
-    .default('your-secret-key-change-this-in-production-min-64-chars-for-security'),
+    ),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
