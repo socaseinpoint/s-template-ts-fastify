@@ -94,24 +94,29 @@ echo -e "${GREEN}✅ Test data seeded${NC}"
 
 # Step 4: Start test server
 echo -e "\n${YELLOW}🚀 Step 4: Starting test server on port 3001...${NC}"
+
+# Start server with USE_ENV_FILE=true to trigger .env.test loading in server.ts
 NODE_ENV=test \
 USE_ENV_FILE=true \
+DATABASE_URL="$TEST_DATABASE_URL" \
 PORT=3001 \
-npm run start:dev > test-server.log 2>&1 &
+npm run dev:api > test-server.log 2>&1 &
 
 SERVER_PID=$!
 echo "Server PID: $SERVER_PID"
 
 # Wait for server to be ready
 echo "⏳ Waiting for server to be ready..."
-for i in {1..30}; do
+for i in {1..60}; do
   if curl -s http://localhost:3001/health > /dev/null 2>&1; then
     echo -e "${GREEN}✅ Server ready on http://localhost:3001${NC}"
+    # Wait extra 2 seconds to ensure JWT plugin is fully initialized
+    sleep 2
     break
   fi
-  if [ $i -eq 30 ]; then
+  if [ $i -eq 60 ]; then
     echo -e "${RED}❌ Server failed to start. Check test-server.log for details${NC}"
-    cat test-server.log
+    tail -50 test-server.log
     exit 1
   fi
   sleep 1

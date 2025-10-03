@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import fastifyPlugin from 'fastify-plugin'
 import fastifyJwt from '@fastify/jwt'
 import { Config } from '@/config'
 import { Logger } from '@/shared/utils/logger'
@@ -23,7 +24,7 @@ declare module '@fastify/jwt' {
   }
 }
 
-export async function jwtPlugin(fastify: FastifyInstance) {
+async function jwtPluginImpl(fastify: FastifyInstance) {
   // Register JWT plugin
   await fastify.register(fastifyJwt, {
     secret: Config.JWT_SECRET,
@@ -141,6 +142,12 @@ export async function jwtPlugin(fastify: FastifyInstance) {
 
   logger.info('JWT plugin registered with authentication decorators')
 }
+
+// Export wrapped plugin to break encapsulation barrier
+export const jwtPlugin = fastifyPlugin(jwtPluginImpl, {
+  name: 'jwt-auth-plugin',
+  fastify: '>=4.x',
+})
 
 // Type declarations for decorators
 declare module 'fastify' {

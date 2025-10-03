@@ -1,7 +1,9 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 
 /**
- * Authentication middleware - требует чтобы fastify.authenticate был зарегистрирован
+ * Authentication middleware
+ * Note: This is kept for backwards compatibility but NOT USED in routes.
+ * Routes use fastify.authenticate decorator directly to avoid encapsulation issues.
  */
 export async function authenticateMiddleware(request: FastifyRequest, reply: FastifyReply) {
   try {

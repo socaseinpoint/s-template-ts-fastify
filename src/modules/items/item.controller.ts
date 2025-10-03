@@ -14,7 +14,7 @@ import {
   batchDeleteItemsDtoSchema,
 } from './item.dto'
 import { UserRole } from '@/constants'
-import { authenticateMiddleware, authorizeRoles } from '@/shared/middleware/authenticate.middleware'
+import { authorizeRoles } from '@/shared/middleware/authenticate.middleware'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { NotFoundError } from '@/shared/utils/errors'
 
@@ -26,7 +26,7 @@ export default async function itemController(fastify: FastifyInstance) {
   fastify.withTypeProvider<ZodTypeProvider>().get(
     '/',
     {
-      onRequest: [authenticateMiddleware],
+      onRequest: [fastify.authenticate],
       schema: {
         description: 'Get all items (requires authentication)',
         tags: ['Items'],
@@ -47,7 +47,7 @@ export default async function itemController(fastify: FastifyInstance) {
   fastify.withTypeProvider<ZodTypeProvider>().get(
     '/:id',
     {
-      onRequest: [authenticateMiddleware],
+      onRequest: [fastify.authenticate],
       schema: {
         description: 'Get item by ID (requires authentication)',
         tags: ['Items'],

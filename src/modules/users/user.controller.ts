@@ -9,7 +9,7 @@ import {
 } from './user.schemas'
 import { updateUserDtoSchema, getUsersQuerySchema } from './user.dto'
 import { UserRole } from '@/constants'
-import { authenticateMiddleware, authorizeRoles } from '@/shared/middleware/authenticate.middleware'
+import { authorizeRoles } from '@/shared/middleware/authenticate.middleware'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { NotFoundError, ForbiddenError } from '@/shared/utils/errors'
 
@@ -42,7 +42,7 @@ export default async function userController(fastify: FastifyInstance) {
   fastify.withTypeProvider<ZodTypeProvider>().get(
     '/:id',
     {
-      onRequest: [authenticateMiddleware],
+      onRequest: [fastify.authenticate],
       schema: {
         description: 'Get user by ID (requires authentication)',
         tags: ['Users'],
@@ -78,7 +78,7 @@ export default async function userController(fastify: FastifyInstance) {
   fastify.withTypeProvider<ZodTypeProvider>().put(
     '/:id',
     {
-      onRequest: [authenticateMiddleware],
+      onRequest: [fastify.authenticate],
       schema: {
         description: 'Update user (requires authentication)',
         tags: ['Users'],

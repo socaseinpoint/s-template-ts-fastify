@@ -8,7 +8,6 @@ import {
 } from './auth.schemas'
 import { loginDtoSchema, registerDtoSchema, refreshTokenDtoSchema } from './auth.dto'
 import { RATE_LIMITS } from '@/constants'
-import { authenticateMiddleware } from '@/shared/middleware/authenticate.middleware'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 
 /**
@@ -114,7 +113,7 @@ export default async function authController(fastify: FastifyInstance) {
   fastify.withTypeProvider<ZodTypeProvider>().post(
     '/logout',
     {
-      preHandler: [authenticateMiddleware],
+      onRequest: [fastify.authenticate],
       schema: {
         description: 'User logout (revokes current session tokens)',
         tags: ['Auth'],
@@ -143,7 +142,7 @@ export default async function authController(fastify: FastifyInstance) {
   fastify.withTypeProvider<ZodTypeProvider>().post(
     '/logout-all',
     {
-      preHandler: [authenticateMiddleware],
+      onRequest: [fastify.authenticate],
       schema: {
         description: 'Logout from all devices (revokes all refresh tokens)',
         tags: ['Auth'],

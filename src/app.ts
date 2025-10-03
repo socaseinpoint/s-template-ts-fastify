@@ -17,10 +17,12 @@ import { Logger } from '@/shared/utils/logger'
 import { Config } from '@/config'
 import { jwtPlugin } from '@/shared/plugins/jwt.plugin'
 import { requestContextPlugin } from '@/shared/plugins/request-context.plugin'
+import { monitoringPlugin } from '@/shared/plugins/monitoring.plugin'
 import { createDIContainer, DIContainer } from '@/container'
 import { errorHandler } from '@/shared/middleware/error-handler.middleware'
 import { RATE_LIMITS, ROUTES, ServiceStatus } from '@/constants'
 import { healthResponseSchema, welcomeResponseSchema } from '@/shared/schemas/system.schemas'
+import { validateRedisConfig } from '@/shared/utils/env-validation'
 
 const logger = new Logger('App')
 
@@ -74,7 +76,6 @@ export async function createApp(): Promise<AppContext> {
 
   // Register Redis (OPTIONAL in development, REQUIRED in production)
   let redisClient
-  const { validateRedisConfig } = await import('@/shared/utils/env-validation')
 
   // Validate Redis configuration
   const redisValidation = validateRedisConfig({
@@ -186,7 +187,6 @@ export async function createApp(): Promise<AppContext> {
   await fastify.register(jwtPlugin)
 
   // Register monitoring plugin (Bull Board + Prometheus)
-  const { monitoringPlugin } = await import('@/shared/plugins/monitoring.plugin')
   await fastify.register(monitoringPlugin)
 
   // Register Swagger
