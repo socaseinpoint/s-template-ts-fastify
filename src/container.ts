@@ -38,7 +38,8 @@ export interface ICradle {
   itemService: ItemService
 
   // Queue infrastructure (optional - only when MODE=all)
-  redisConnection?: IORedis
+  connection?: IORedis // Named 'connection' for QueueService DI
+  redisConnection?: IORedis // Alias for external use
   queueService?: QueueService
   workerService?: WorkerService
 
@@ -152,8 +153,10 @@ export async function createDIContainer(
     logger.info('Registering queue services...')
 
     // Register Redis connection for BullMQ
+    // IMPORTANT: Named 'connection' for QueueService DI resolution
     container.register({
-      redisConnection: asValue(options.redisConnection),
+      connection: asValue(options.redisConnection), // QueueService expects 'connection'
+      redisConnection: asValue(options.redisConnection), // Alias for external access
     })
 
     // Register queue and worker services
@@ -206,10 +209,10 @@ export async function disposeDIContainer(container: AwilixContainer<ICradle>): P
     }
 
     // Close Redis connection for BullMQ
-    const redisConnection = container.cradle.redisConnection
-    if (redisConnection) {
+    const connection = container.cradle.connection
+    if (connection) {
       logger.info('Closing BullMQ Redis connection...')
-      await redisConnection.quit()
+      await connection.quit()
       logger.info('✅ BullMQ Redis connection closed')
     }
 
