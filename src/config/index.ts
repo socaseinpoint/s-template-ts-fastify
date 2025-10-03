@@ -7,6 +7,9 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 
+  // Service Mode: 'all' = API + Worker, 'api' = API only, 'worker' = Worker only
+  MODE: z.enum(['all', 'api', 'worker']).default('all'),
+
   // Database configuration
   DATABASE_URL: z.string().optional(),
 
@@ -15,6 +18,11 @@ const envSchema = z.object({
   REDIS_HOST: z.string().default('127.0.0.1'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
   REDIS_PASSWORD: z.string().optional(),
+
+  // Queue configuration (BullMQ)
+  QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(5), // Max concurrent jobs per worker
+  QUEUE_REMOVE_ON_COMPLETE: z.coerce.number().int().positive().default(100), // Keep last N completed jobs
+  QUEUE_REMOVE_ON_FAIL: z.coerce.number().int().positive().default(1000), // Keep last N failed jobs
 
   // API Keys
   API_KEY: z.string().optional(),

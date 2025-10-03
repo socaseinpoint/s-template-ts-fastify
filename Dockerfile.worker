@@ -1,0 +1,85 @@
+# ============================================
+# Dockerfile for Worker Service (Optimized)
+# ============================================
+# This Dockerfile builds a lightweight worker image
+# WITHOUT Fastify and API dependencies
+#
+# Usage:
+#   docker build -f Dockerfile.worker -t myapp-worker .
+#   docker run -e MODE=worker myapp-worker
+
+# ============================================
+# Stage 1: Dependencies
+# ============================================
+FROM node:20-alpine AS deps
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install ALL dependencies (needed for build)
+RUN npm ci
+
+# ============================================
+# Stage 2: Build
+# ============================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source code
+COPY . .
+
+# Build TypeScript
+RUN npm run build
+
+# ============================================
+# Stage 3: Production (Worker Only)
+# ============================================
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Add non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 worker
+
+# Copy package files
+COPY package*.json ./
+
+# Install ONLY production dependencies
+RUN npm ci --production && \
+    npm cache clean --force
+
+# Copy built application
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+
+# Copy startup script
+COPY start.sh ./
+RUN chmod +x start.sh
+
+# Change ownership to non-root user
+RUN chown -R worker:nodejs /app
+
+# Switch to non-root user
+USER worker
+
+# Expose health check port (if needed)
+EXPOSE 3001
+
+# Environment variables
+ENV NODE_ENV=production \
+    MODE=worker
+
+# Health check (optional - pings Redis)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('ioredis').createClient(process.env.REDIS_URL).ping().then(() => process.exit(0)).catch(() => process.exit(1))"
+
+# Start worker
+CMD ["npm", "run", "start:worker"]
+

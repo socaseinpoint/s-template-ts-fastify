@@ -1,0 +1,88 @@
+# ============================================
+# Production Docker Compose (Worker Service Only)
+# ============================================
+# Deploys ONLY the worker service
+# PostgreSQL and Redis are EXTERNAL (managed services)
+#
+# Prerequisites:
+#   - PostgreSQL running externally (AWS RDS, DigitalOcean, etc.)
+#   - Redis running externally (ElastiCache, Redis Cloud, etc.)
+#   - .env file with DATABASE_URL and REDIS_URL
+#
+# Usage:
+#   docker compose -f docker-compose.prod.worker.yml up -d
+#   docker compose -f docker-compose.prod.worker.yml up -d --scale worker=5
+#   docker compose -f docker-compose.prod.worker.yml logs -f
+
+version: '3.8'
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        NODE_ENV: production
+    image: ${IMAGE_NAME:-myapp-worker}:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-app-worker}
+    restart: unless-stopped
+    
+    environment:
+      # Service Configuration
+      NODE_ENV: production
+      MODE: worker                 # Workers only (no API)
+      
+      # External Services (set in .env)
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      
+      # Queue Configuration
+      QUEUE_CONCURRENCY: ${QUEUE_CONCURRENCY:-10}
+      QUEUE_REMOVE_ON_COMPLETE: ${QUEUE_REMOVE_ON_COMPLETE:-100}
+      QUEUE_REMOVE_ON_FAIL: ${QUEUE_REMOVE_ON_FAIL:-1000}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Service Info
+      SERVICE_NAME: ${SERVICE_NAME:-worker-service}
+      SERVICE_VERSION: ${SERVICE_VERSION:-1.0.0}
+      
+      # External API Keys (add as needed)
+      REPLICATE_API_KEY: ${REPLICATE_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Add other API keys here
+    
+    # No ports exposed (workers don't need HTTP)
+    
+    # Health check (ping Redis)
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('ioredis').createClient(process.env.REDIS_URL).ping().then(() => process.exit(0)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    
+    # Resource limits (adjust based on your jobs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Note: No networks or volumes needed if using external services

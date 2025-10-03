@@ -2,12 +2,19 @@ import { createContainer, asValue, asClass, InjectionMode, Lifetime, AwilixConta
 import { PrismaClient } from '@prisma/client'
 import { Logger } from '@/shared/utils/logger'
 import type { FastifyRedis } from '@fastify/redis'
+import type IORedis from 'ioredis'
+import type { Queue } from 'bullmq'
 
 // Modules
 import { AuthService } from '@/modules/auth'
 import { UserService, UserRepository, type IUserRepository } from '@/modules/users'
 import { ItemService, ItemRepository, type IItemRepository } from '@/modules/items'
 import { RedisTokenRepository, type ITokenRepository } from '@/shared/cache/redis-token.repository'
+
+// Queue services
+import { QueueService } from '@/shared/queue/queue.service'
+import { WorkerService } from '@/shared/queue/worker.service'
+import { QUEUE_NAMES, type WebhookJobData } from '@/modules/jobs'
 
 const logger = new Logger('Container')
 
@@ -25,12 +32,22 @@ export interface ICradle {
   authService: AuthService
   userService: UserService
   itemService: ItemService
+
+  // Queue infrastructure (optional - only when MODE=all)
+  redisConnection?: IORedis
+  queueService?: QueueService
+  workerService?: WorkerService
+
+  // Queues (optional - only when MODE=all)
+  webhookQueue?: Queue<WebhookJobData>
 }
 
 export interface ContainerOptions {
   prisma?: PrismaClient
   redis: FastifyRedis // Required for token storage
   skipConnect?: boolean
+  enableQueues?: boolean // Enable queue services (for MODE=all)
+  redisConnection?: IORedis // IORedis connection for BullMQ (separate from Fastify Redis)
 }
 
 /**
@@ -116,6 +133,36 @@ export async function createDIContainer(
     itemService: asClass(ItemService, { lifetime: Lifetime.SINGLETON }),
   })
 
+  // Register queue services (optional - only if enableQueues is true)
+  if (options.enableQueues && options.redisConnection) {
+    logger.info('Registering queue services...')
+
+    // Register Redis connection for BullMQ
+    container.register({
+      redisConnection: asValue(options.redisConnection),
+    })
+
+    // Register queue and worker services
+    container.register({
+      queueService: asClass(QueueService, { lifetime: Lifetime.SINGLETON }),
+      workerService: asClass(WorkerService, { lifetime: Lifetime.SINGLETON }),
+    })
+
+    // Create queues
+    const queueService = container.cradle.queueService
+    if (!queueService) {
+      throw new Error('QueueService not initialized')
+    }
+    const webhookQueue = queueService.createQueue<WebhookJobData>(QUEUE_NAMES.WEBHOOK_PROCESSOR)
+
+    // Register queues in container
+    container.register({
+      webhookQueue: asValue(webhookQueue),
+    })
+
+    logger.info('✅ Queue services registered')
+  }
+
   logger.info('✅ DI Container initialized (Token storage: Redis)')
 
   return container
@@ -129,6 +176,29 @@ export async function disposeDIContainer(container: AwilixContainer<ICradle>): P
   logger.info('Disposing DI container...')
 
   try {
+    // Close queue services (if enabled)
+    const queueService = container.cradle.queueService
+    if (queueService) {
+      logger.info('Closing queue service...')
+      await queueService.close()
+      logger.info('✅ Queue service closed')
+    }
+
+    const workerService = container.cradle.workerService
+    if (workerService) {
+      logger.info('Closing worker service...')
+      await workerService.close()
+      logger.info('✅ Worker service closed')
+    }
+
+    // Close Redis connection for BullMQ
+    const redisConnection = container.cradle.redisConnection
+    if (redisConnection) {
+      logger.info('Closing BullMQ Redis connection...')
+      await redisConnection.quit()
+      logger.info('✅ BullMQ Redis connection closed')
+    }
+
     // Cleanup TokenRepository interval (prevents memory leak)
     const tokenRepository = container.cradle.tokenRepository
     if (tokenRepository && typeof tokenRepository.dispose === 'function') {

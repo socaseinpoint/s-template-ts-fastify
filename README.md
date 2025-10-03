@@ -1,323 +1,265 @@
-# Fastify TypeScript Service Template
+# TypeScript Service Template
 
-A production-ready Fastify service template with TypeScript, Swagger, authentication, and comprehensive tooling.
+Production-ready Fastify API with background job processing (BullMQ).
 
-## 🚀 Quick Start (2 minutes)
+**Perfect for:** Video generation, AI agents, async data processing
+
+---
+
+## What's Inside
+
+- **API Service** (Fastify) - RESTful API with auth, validation, Swagger
+- **Worker Service** (BullMQ) - Background jobs with retry & scaling
+- **Flexible Architecture** - One process for MVP, separate for production
+
+---
+
+## Quick Start (Development)
 
 ```bash
-# 1. Install dependencies
+# 1. Install
 npm install
 
-# 2. Setup environment
-cp .env.example .env
-# Edit .env and set at least: DATABASE_URL, JWT_SECRET
-
-# 3. Start infrastructure (PostgreSQL + Redis)
+# 2. Start infrastructure
 npm run docker:up
 
-# 4. Setup database
+# 3. Setup database
 npm run prisma:generate
 npm run prisma:migrate
 npm run prisma:seed
 
-# 5. Start development server
+# 4. Start service (API + Workers)
 npm run dev
 ```
 
-**Your service is now running!** 🎉
-
-- 📚 API Docs: http://localhost:3000/docs
-- ❤️ Health Check: http://localhost:3000/health
-- 🔐 Test Login: `admin@example.com` / `password123`
-
-**Run tests:**
-```bash
-npm test              # Unit tests (43 tests, ~1s)
-npm run test:e2e:full # E2E tests (15 tests, ~2min)
-```
-
-**Troubleshooting:**
-```bash
-npm run reset         # Clean everything and start fresh
-npm run docker:logs   # Check Docker logs
-```
-
-📖 **For detailed documentation, see:**
-- [Testing Guide](./docs/TESTING.md)
-- [Deployment Guide](./docs/DEPLOYMENT.md)
-- [Development Guide](./docs/DEVELOPMENT.md)
+**✅ Done!**
+- API: http://localhost:3000/docs
+- Health: http://localhost:3000/health
+- Login: `admin@example.com` / `password123`
 
 ---
 
-## Features
+## Quick Start (Production)
 
-- ⚡ **Fastify** - High-performance web framework
-- 🚀 **TypeScript** - Type-safe development with path aliases
-- 📝 **Swagger/OpenAPI** - Auto-generated API documentation
-- 🔐 **Authentication** - JWT-based auth with refresh tokens
-- 🎯 **Path Aliases** - Use `@/` for clean imports from `src/`
-- 📊 **Health Checks** - Built-in health monitoring endpoints
-- 🗄️ **Prisma ORM** - Type-safe database access (optional)
-- 🔄 **Redis Support** - Caching and session management (optional)
-- 📦 **Modular Architecture** - Clean service-based structure
-- 🪝 **Git Hooks** - Husky for pre-commit checks
-- 🧪 **Testing** - Vitest for unit testing
-- 📝 **ESLint & Prettier** - Code quality and formatting
-- 🔧 **Environment Config** - Dotenv configuration
-- 🌐 **CORS** - Configurable CORS settings
-- 📖 **Logging** - Structured logging with levels
+### Prerequisites
 
-## Project Structure
+1. **PostgreSQL** (managed) - AWS RDS, DigitalOcean, etc.
+2. **Redis** (managed) - ElastiCache, Redis Cloud, etc.
 
-```
-ts-service-template/
-├── src/
-│   ├── modules/              # Business domain modules
-│   │   ├── auth/             # Authentication module
-│   │   │   ├── auth.service.ts
-│   │   │   ├── auth.controller.ts
-│   │   │   ├── auth.dto.ts
-│   │   │   ├── auth.schemas.ts
-│   │   │   └── index.ts      # Public API
-│   │   ├── users/            # User management module
-│   │   │   ├── user.service.ts
-│   │   │   ├── user.repository.ts
-│   │   │   ├── user.controller.ts
-│   │   │   ├── user.dto.ts
-│   │   │   ├── user.schemas.ts
-│   │   │   └── index.ts
-│   │   └── items/            # Items module
-│   │       ├── item.service.ts
-│   │       ├── item.repository.ts
-│   │       ├── item.controller.ts
-│   │       ├── item.dto.ts
-│   │       ├── item.schemas.ts
-│   │       └── index.ts
-│   ├── shared/               # Shared components
-│   │   ├── database/         # Database services
-│   │   │   ├── prisma.service.ts
-│   │   │   └── base.repository.ts
-│   │   ├── cache/            # Cache/Redis
-│   │   │   └── token.repository.ts
-│   │   ├── middleware/       # HTTP middleware
-│   │   ├── plugins/          # Fastify plugins
-│   │   ├── utils/            # Utilities
-│   │   │   ├── logger.ts
-│   │   │   ├── errors.ts
-│   │   │   └── helpers.ts
-│   │   └── types/            # Type definitions
-│   ├── config/               # Configuration
-│   │   ├── index.ts
-│   │   └── swagger.ts
-│   ├── routes/               # Route registration
-│   │   └── index.ts
-│   ├── container.ts          # DI container
-│   ├── app.ts                # App factory
-│   └── server.ts             # Entry point
-├── prisma/                   # Prisma ORM
-│   └── schema.prisma
-├── tests/                    # Test suites
-│   ├── unit/
-│   └── e2e/
-├── dist/                     # Compiled output
-├── .husky/                   # Git hooks
-├── .env.example              # Environment template
-├── tsconfig.json             # TypeScript config
-├── vitest.config.ts          # Test config
-└── package.json
+### Deploy
+
+```bash
+# 1. Configure
+export DATABASE_URL="postgresql://user:pass@host:5432/db?sslmode=require"
+export REDIS_URL="redis://default:pass@host:6379"
+export JWT_SECRET="$(openssl rand -base64 64)"
+export CORS_ORIGIN="https://yourapp.com"
+
+# 2. Build
+docker build -t myapp-api .
+docker build -f Dockerfile.worker -t myapp-worker .
+
+# 3. Migrate
+docker run --rm -e DATABASE_URL="$DATABASE_URL" myapp-api npx prisma migrate deploy
+
+# 4. Deploy API
+docker compose -f docker-compose.prod.api.yml up -d --scale api=3
+
+# 5. Deploy Workers
+docker compose -f docker-compose.prod.worker.yml up -d --scale worker=5
 ```
 
-## Documentation
+---
 
-- 📖 [**Development Guide**](./docs/DEVELOPMENT.md) - Setup, project structure, best practices
-- 🧪 [**Testing Guide**](./docs/TESTING.md) - Unit tests, E2E tests, coverage
-- 🚀 [**Deployment Guide**](./docs/DEPLOYMENT.md) - Docker, cloud platforms, production setup
+## Operating Modes
+
+```bash
+MODE=all      # API + Workers (MVP)
+MODE=api      # API only (production)
+MODE=worker   # Workers only (production)
+```
+
+**Development:**
+```bash
+npm run dev              # API + Workers
+npm run dev:api          # API only
+npm run dev:worker       # Workers only
+```
+
+**Production:**
+```bash
+npm run start            # API
+npm run start:worker     # Workers
+npm run start:all        # Both
+```
+
+---
+
+## Example: Background Job
+
+### Create Job
+
+```typescript
+// src/modules/jobs/video.queue.ts
+export interface VideoJobData {
+  userId: string
+  scriptId: string
+}
+```
+
+### Create Processor
+
+```typescript
+// src/modules/jobs/video.worker.ts
+export async function processVideoJob(job: Job<VideoJobData>) {
+  await job.updateProgress(50)
+  const video = await generateVideo(job.data.scriptId)
+  await job.updateProgress(100)
+  return { videoUrl: video.url }
+}
+```
+
+### Register
+
+```typescript
+// src/worker.ts
+workerService.createWorker('video-generation', processVideoJob)
+```
+
+### Use in API
+
+```typescript
+const job = await videoQueue.add('generate', { userId, scriptId })
+return { jobId: job.id, status: 'queued' }
+```
+
+---
+
+## Environment Variables
+
+### Required
+```bash
+DATABASE_URL=postgresql://user:pass@host:5432/db
+REDIS_URL=redis://host:6379
+JWT_SECRET=<64-char-string>        # openssl rand -base64 64
+```
+
+### Production
+```bash
+MODE=api
+CORS_ORIGIN=https://yourapp.com    # NOT *
+ENABLE_SWAGGER=false
+QUEUE_CONCURRENCY=10
+```
+
+---
 
 ## Available Scripts
 
 ### Development
 ```bash
-npm run dev           # Start with hot reload
-npm run start:dev     # Start without hot reload
-npm run docker:up     # Start PostgreSQL + Redis
-npm run docker:logs   # View Docker logs
+npm run dev              # API + Workers
+npm run dev:api          # API only
+npm run dev:worker       # Workers only
+```
+
+### Build & Run
+```bash
+npm run build            # Compile
+npm run start            # API
+npm run start:worker     # Workers
 ```
 
 ### Testing
 ```bash
-npm test              # Unit tests (fast)
-npm run test:e2e:full # E2E tests (automated)
-npm run test:coverage # Coverage report
-npm run test:ui       # Interactive UI
+npm test                 # Unit tests
+npm run test:e2e:full    # E2E tests
+npm run test:coverage    # Coverage
 ```
 
-### Code Quality
+### Docker
 ```bash
-npm run lint          # Fix linting issues
-npm run format        # Format code
-npm run type-check    # TypeScript validation
+npm run docker:up               # Dev (Postgres + Redis)
+npm run docker:prod:api         # Prod API
+npm run docker:prod:worker      # Prod Workers
 ```
 
 ### Database
 ```bash
-npm run prisma:generate  # Generate Prisma client
-npm run prisma:migrate   # Run migrations
-npm run prisma:studio    # Visual database editor
-npm run prisma:seed      # Seed test data
+npm run prisma:generate  # Generate client
+npm run prisma:migrate   # Migrations
+npm run prisma:studio    # Visual editor
 ```
 
-### Maintenance
-```bash
-npm run clean         # Remove build artifacts
-npm run reset         # Complete reset (everything)
-npm run docker:clean  # Clean Docker volumes
+---
+
+## Production Architecture
+
+```
+Load Balancer
+    ↓
+API × 3 (MODE=api)
+    ↓
+Redis (managed)
+    ↓
+Workers × 5 (MODE=worker)
+    ↓
+PostgreSQL (managed)
 ```
 
-See [package.json](./package.json) for all available scripts.
+---
 
-## API Documentation
-
-When the server is running, **Swagger UI** is available at: **http://localhost:3000/docs**
-
-### Quick API Overview
-
-| Endpoint | Method | Auth Required | Description |
-|----------|--------|---------------|-------------|
-| `/health` | GET | ❌ | Health check |
-| `/v1/auth/login` | POST | ❌ | User login |
-| `/v1/auth/register` | POST | ❌ | User registration |
-| `/v1/users` | GET | ✅ Admin | List users |
-| `/v1/items` | GET | ✅ Any | List items |
-| `/v1/items` | POST | ✅ Moderator+ | Create item |
-
-📚 **Full API documentation:** http://localhost:3000/docs (interactive)
-
-## Configuration
-
-All configuration is done through environment variables. See `.env.example` for full list with documentation.
-
-**Required variables:**
-- `DATABASE_URL` - PostgreSQL connection string
-- `JWT_SECRET` - Secret key for JWT (64+ chars, high entropy)
-
-**Optional but recommended:**
-- `REDIS_URL` - Redis for distributed token storage
-- `CORS_ORIGIN` - Allowed origins (set to specific domains in production)
-
-Generate secure JWT secret:
-```bash
-openssl rand -base64 64
-```
-
-📖 **Full configuration guide:** [Development Guide](./docs/DEVELOPMENT.md)
-
-## Authentication & Authorization
-
-JWT-based authentication with role-based access control (RBAC).
-
-**Test Credentials:**
-```
-Admin:      admin@example.com     / password123
-Moderator:  moderator@example.com / password123
-User:       user@example.com      / password123
-```
-
-**Usage:**
-```bash
-# 1. Login
-curl -X POST http://localhost:3000/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"password123"}'
-
-# 2. Use token
-curl http://localhost:3000/v1/items \
-  -H "Authorization: Bearer <your-token>"
-```
-
-📖 **Full authentication guide:** See [API Documentation](http://localhost:3000/docs)
-
-## Testing
-
-**Two-tier testing strategy:**
-- 🧪 **Unit Tests** - 43 tests, ~1s, fully mocked
-- 🌐 **E2E Tests** - 15 tests, ~2min, real database
+## Scaling
 
 ```bash
-npm test              # Unit tests (fast)
-npm run test:e2e:full # E2E tests (automated with Docker)
-npm run test:coverage # Coverage report (80%+ required)
+# API
+docker compose -f docker-compose.prod.api.yml up -d --scale api=3
+
+# Workers
+docker compose -f docker-compose.prod.worker.yml up -d --scale worker=5
 ```
 
-**E2E test options:**
-```bash
-npm run test:e2e:full         # Normal (keeps volumes for speed)
-CLEAN=true npm run test:e2e:full  # Full cleanup (removes everything)
-```
+---
 
-📖 **Full testing guide:** [Testing Guide](./docs/TESTING.md)
+## Documentation
 
-## Deployment
+- 📝 [API Service](./docs/API.md) - API docs
+- ⚙️ [Worker Service](./docs/WORKER.md) - Workers docs
+- 🔥 [Workers Guide](./docs/WORKERS.md) - BullMQ patterns
+- 🚀 [Deployment](./docs/DEPLOYMENT.md) - Production guide
+- 🧪 [Testing](./docs/TESTING.md) - Testing guide
 
-```bash
-# Build for production
-npm run build
-
-# Run in production
-NODE_ENV=production npm start
-
-# Docker deployment
-docker build -t fastify-service .
-docker run -p 3000:3000 --env-file .env fastify-service
-```
-
-📖 **Full deployment guide:** [Deployment Guide](./docs/DEPLOYMENT.md)
-
-## Architecture Highlights
-
-- **Clean Architecture** - Separation of concerns (Routes → Services → Repositories)
-- **Dependency Injection** - Awilix with SINGLETON lifetime for stateless services
-- **Type Safety** - 100% TypeScript with strict mode, zero `any` types
-- **Security First** - JWT entropy validation, rate limiting, CORS, Helmet
-- **Graceful Degradation** - Redis optional, falls back to in-memory
-- **Observability** - Structured logging, correlation IDs, health checks
-
-## Project Principles
-
-✅ **No global state** - Everything passed through DI container  
-✅ **Type-safe** - Full TypeScript, strict mode enabled  
-✅ **Well-tested** - 58 tests (unit + E2E), 80%+ coverage  
-✅ **Production-ready** - Docker, monitoring, graceful shutdown  
-✅ **Developer-friendly** - Hot reload, clear errors, good docs  
+---
 
 ## Troubleshooting
 
 ```bash
-# Something broke? Reset everything:
+# Reset everything
 npm run reset
 
-# Check what's running:
+# Check services
+npm run docker:up
 npm run docker:logs
 
-# View test server logs:
-cat test-server.log
+# Check Redis
+redis-cli ping
 
-# Full cleanup (including Docker volumes):
-CLEAN=true npm run test:e2e:full
+# Check workers
+docker ps | grep worker
 ```
 
-## Contributing
+---
 
-1. Fork and create a feature branch
-2. Make your changes
-3. Run `npm run precommit` (linting, formatting, type-check, tests)
-4. Submit a pull request
+## Security Checklist
+
+- [ ] Strong JWT_SECRET (64+ chars)
+- [ ] CORS restricted (`https://yourapp.com`, NOT `*`)
+- [ ] Swagger disabled (`ENABLE_SWAGGER=false`)
+- [ ] Database SSL (`?sslmode=require`)
+- [ ] Rate limiting enabled
+
+---
 
 ## License
 
 ISC
-
-## Support
-
-📖 Check documentation in [./docs/](./docs/)  
-🐛 Report issues on GitHub  
-💬 Questions? Open a discussion

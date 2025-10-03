@@ -102,8 +102,23 @@ export async function createApp(): Promise<AppContext> {
     )
   }
 
-  // Create DI container with Redis
-  const container = await createDIContainer({ redis: redisClient })
+  // Check if we need to enable queues (MODE=all)
+  const enableQueues = Config.MODE === 'all'
+  let redisConnection
+
+  if (enableQueues) {
+    logger.info('MODE=all detected - enabling queue services')
+    // Import here to avoid loading BullMQ in MODE=api
+    const { createRedisConnection } = await import('@/shared/queue/redis-connection')
+    redisConnection = createRedisConnection()
+  }
+
+  // Create DI container with Redis and optional queue support
+  const container = await createDIContainer({
+    redis: redisClient,
+    enableQueues,
+    redisConnection,
+  })
 
   // Decorate fastify with container for access in plugins/routes
   fastify.decorate('diContainer', container)

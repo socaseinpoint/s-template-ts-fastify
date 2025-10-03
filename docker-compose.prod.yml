@@ -1,0 +1,98 @@
+# ============================================
+# Production Docker Compose (All-in-One with External Services)
+# ============================================
+# Deploys API + Worker in single process (MODE=all)
+# PostgreSQL and Redis are EXTERNAL
+#
+# Best for:
+#   - MVP deployments
+#   - Small projects
+#   - Simple infrastructure
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml logs -f
+
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    image: ${IMAGE_NAME:-myapp}:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-app-all-in-one}
+    restart: unless-stopped
+    
+    environment:
+      # Service Configuration
+      NODE_ENV: production
+      MODE: all                    # API + Workers in one process
+      PORT: ${PORT:-3000}
+      HOST: 0.0.0.0
+      
+      # External Services (MUST be set in .env)
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      
+      # JWT Configuration
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      
+      # CORS
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      
+      # Features
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-false}
+      ENABLE_RATE_LIMIT: ${ENABLE_RATE_LIMIT:-true}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      
+      # Queue Configuration
+      QUEUE_CONCURRENCY: ${QUEUE_CONCURRENCY:-5}
+      QUEUE_REMOVE_ON_COMPLETE: ${QUEUE_REMOVE_ON_COMPLETE:-100}
+      QUEUE_REMOVE_ON_FAIL: ${QUEUE_REMOVE_ON_FAIL:-1000}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Service Info
+      SERVICE_NAME: ${SERVICE_NAME:-app-service}
+      SERVICE_VERSION: ${SERVICE_VERSION:-1.0.0}
+    
+    ports:
+      - "${API_PORT:-3000}:3000"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Resource limits (API + Workers need more resources)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Note: No PostgreSQL or Redis containers - use external managed services!
+
