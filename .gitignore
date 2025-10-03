@@ -12,6 +12,8 @@ build/
 .env
 .env.local
 .env.*.local
+# Keep .env.test for E2E tests (contains only test secrets)
+!.env.test
 
 # BUT allow example files (safe to commit)
 !.env.example

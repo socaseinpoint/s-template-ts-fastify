@@ -95,11 +95,21 @@ echo -e "${GREEN}✅ Test data seeded${NC}"
 # Step 4: Start test server
 echo -e "\n${YELLOW}🚀 Step 4: Starting test server on port 3001...${NC}"
 
-# Start server with USE_ENV_FILE=true to trigger .env.test loading in server.ts
-NODE_ENV=test \
-USE_ENV_FILE=true \
-DATABASE_URL="$TEST_DATABASE_URL" \
-PORT=3001 \
+# Load test environment variables from .env.test
+if [ -f .env.test ]; then
+  export $(cat .env.test | grep -v '^#' | grep -v '^$' | xargs)
+  echo "Loaded configuration from .env.test"
+else
+  echo -e "${RED}❌ .env.test not found! Copy .env.example to .env.test${NC}"
+  exit 1
+fi
+
+# Override with test-specific values
+export NODE_ENV=test
+export DATABASE_URL="$TEST_DATABASE_URL"
+export PORT=3001
+
+# Start server
 npm run dev:api > test-server.log 2>&1 &
 
 SERVER_PID=$!

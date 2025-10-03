@@ -19,6 +19,7 @@
     "test": "vitest run tests/unit",
     "test:watch": "vitest",
     "test:e2e": "vitest run tests/e2e",
+    "test:e2e:full": "./scripts/test-e2e.sh",
     "test:coverage": "vitest run --coverage",
     "test:ci": "vitest run tests/unit --coverage --reporter=default --reporter=json",
     "prisma:generate": "prisma generate",
