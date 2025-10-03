@@ -105,7 +105,10 @@ export default async function itemRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       try {
-        const user = (request as any).user
+        const user = request.user
+        if (!user) {
+          throw new Error('Unauthorized')
+        }
         const item = await itemService.createItem({
           ...request.body,
           userId: user.id,

@@ -14,8 +14,7 @@ const logger = new Logger('ErrorHandler')
 interface ErrorResponse {
   error: string
   code: number
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  details?: any
+  details?: unknown
   stack?: string
 }
 

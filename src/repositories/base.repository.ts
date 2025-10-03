@@ -2,6 +2,33 @@ import { PrismaClient } from '@prisma/client'
 import { Logger } from '@/utils/logger'
 
 /**
+ * Prisma Model Delegate type
+ * Represents any Prisma model with common CRUD operations
+ */
+export interface PrismaModelDelegate<T> {
+  findUnique(args: { where: { id: string } }): Promise<T | null>
+  findMany(args?: {
+    where?: Record<string, unknown>
+    skip?: number
+    take?: number
+    orderBy?: Record<string, 'asc' | 'desc'>
+    include?: Record<string, boolean>
+  }): Promise<T[]>
+  count(args?: { where?: Record<string, unknown> }): Promise<number>
+  create(args: { data: unknown }): Promise<T>
+  update(args: { where: { id: string }; data: unknown }): Promise<T>
+  delete(args: { where: { id: string } }): Promise<T>
+}
+
+/**
+ * Pagination response interface
+ */
+export interface PaginationResponse<T> {
+  items: T[]
+  total: number
+}
+
+/**
  * Generic Repository Pattern
  * Base class for all repositories to reduce code duplication
  */
@@ -18,15 +45,17 @@ export abstract class BaseRepository<T, CreateDTO = Partial<T>, UpdateDTO = Part
   /**
    * Get Prisma model delegate
    * Each repository must implement this to return the correct model
+   * Note: Typed as unknown due to Prisma's complex delegate types
    */
-  protected abstract getModel(): any
+  protected abstract getModel(): unknown
 
   /**
    * Find by ID
    */
   async findById(id: string): Promise<T | null> {
     try {
-      return await this.getModel().findUnique({ where: { id } })
+      const model = this.getModel() as PrismaModelDelegate<T>
+      return await model.findUnique({ where: { id } })
     } catch (error) {
       this.logger.error(`Failed to find ${this.modelName} by ID: ${id}`, error)
       throw error
@@ -34,15 +63,19 @@ export abstract class BaseRepository<T, CreateDTO = Partial<T>, UpdateDTO = Part
   }
 
   /**
-   * Find many with filters
+   * Find many with filters (simple version without pagination)
    */
-  async findMany(filters: Record<string, any> = {}, options: {
-    skip?: number
-    take?: number
-    orderBy?: Record<string, 'asc' | 'desc'>
-  } = {}): Promise<T[]> {
+  async findMany(
+    filters: Record<string, unknown> = {},
+    options: {
+      skip?: number
+      take?: number
+      orderBy?: Record<string, 'asc' | 'desc'>
+    } = {}
+  ): Promise<T[]> {
     try {
-      return await this.getModel().findMany({
+      const model = this.getModel() as PrismaModelDelegate<T>
+      return await model.findMany({
         where: filters,
         skip: options.skip,
         take: options.take,
@@ -55,11 +88,43 @@ export abstract class BaseRepository<T, CreateDTO = Partial<T>, UpdateDTO = Part
   }
 
   /**
+   * Find many with pagination metadata
+   * Returns items and total count
+   */
+  async findManyWithPagination(
+    filters: Record<string, unknown> = {},
+    options: {
+      skip?: number
+      take?: number
+      orderBy?: Record<string, 'asc' | 'desc'>
+    } = {}
+  ): Promise<PaginationResponse<T>> {
+    try {
+      const model = this.getModel() as PrismaModelDelegate<T>
+      const [items, total] = await Promise.all([
+        model.findMany({
+          where: filters,
+          skip: options.skip,
+          take: options.take,
+          orderBy: options.orderBy,
+        }),
+        this.count(filters),
+      ])
+
+      return { items, total }
+    } catch (error) {
+      this.logger.error(`Failed to find many ${this.modelName} with pagination`, error)
+      throw error
+    }
+  }
+
+  /**
    * Count records
    */
-  async count(filters: Record<string, any> = {}): Promise<number> {
+  async count(filters: Record<string, unknown> = {}): Promise<number> {
     try {
-      return await this.getModel().count({ where: filters })
+      const model = this.getModel() as PrismaModelDelegate<T>
+      return await model.count({ where: filters })
     } catch (error) {
       this.logger.error(`Failed to count ${this.modelName}`, error)
       throw error
@@ -71,7 +136,8 @@ export abstract class BaseRepository<T, CreateDTO = Partial<T>, UpdateDTO = Part
    */
   async create(data: CreateDTO): Promise<T> {
     try {
-      const created = await this.getModel().create({ data })
+      const model = this.getModel() as PrismaModelDelegate<T>
+      const created = await model.create({ data })
       this.logger.info(`${this.modelName} created successfully`)
       return created
     } catch (error) {
@@ -85,7 +151,8 @@ export abstract class BaseRepository<T, CreateDTO = Partial<T>, UpdateDTO = Part
    */
   async update(id: string, data: UpdateDTO): Promise<T> {
     try {
-      const updated = await this.getModel().update({
+      const model = this.getModel() as PrismaModelDelegate<T>
+      const updated = await model.update({
         where: { id },
         data,
       })
@@ -102,7 +169,8 @@ export abstract class BaseRepository<T, CreateDTO = Partial<T>, UpdateDTO = Part
    */
   async delete(id: string): Promise<void> {
     try {
-      await this.getModel().delete({ where: { id } })
+      const model = this.getModel() as PrismaModelDelegate<T>
+      await model.delete({ where: { id } })
       this.logger.info(`${this.modelName} ${id} deleted successfully`)
     } catch (error) {
       this.logger.error(`Failed to delete ${this.modelName} ${id}`, error)
@@ -115,7 +183,8 @@ export abstract class BaseRepository<T, CreateDTO = Partial<T>, UpdateDTO = Part
    */
   async exists(id: string): Promise<boolean> {
     try {
-      const count = await this.getModel().count({ where: { id } })
+      const model = this.getModel() as PrismaModelDelegate<T>
+      const count = await model.count({ where: { id } })
       return count > 0
     } catch (error) {
       this.logger.error(`Failed to check if ${this.modelName} exists: ${id}`, error)
@@ -123,4 +192,3 @@ export abstract class BaseRepository<T, CreateDTO = Partial<T>, UpdateDTO = Part
     }
   }
 }
-

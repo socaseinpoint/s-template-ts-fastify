@@ -63,11 +63,11 @@ const envSchema = z.object({
  */
 function hasStrongEntropy(secret: string): boolean {
   if (secret.length < 64) return false
-  
+
   const buffer = Buffer.from(secret)
   const uniqueChars = new Set(buffer).size
   const entropy = uniqueChars / buffer.length
-  
+
   // Good entropy should have > 50% unique characters
   // and use a variety of character types
   return entropy > 0.5
@@ -78,16 +78,8 @@ function hasStrongEntropy(secret: string): boolean {
  * Checks for common weak patterns
  */
 function isWeakSecret(secret: string): boolean {
-  const weakPatterns = [
-    'change-this',
-    'password',
-    'secret',
-    '123456',
-    'qwerty',
-    'default',
-    'test',
-  ]
-  
+  const weakPatterns = ['change-this', 'password', 'secret', '123456', 'qwerty', 'default', 'test']
+
   const lowerSecret = secret.toLowerCase()
   return weakPatterns.some(pattern => lowerSecret.includes(pattern))
 }
@@ -105,19 +97,19 @@ function validateEnv() {
           '❌ SECURITY: JWT_SECRET contains weak or default patterns! Use a cryptographically secure random string.'
         )
       }
-      
+
       // Check minimum length
       if (parsed.JWT_SECRET.length < 64) {
         throw new Error('❌ SECURITY: JWT_SECRET must be at least 64 characters in production')
       }
-      
+
       // Check entropy
       if (!hasStrongEntropy(parsed.JWT_SECRET)) {
         throw new Error(
           '❌ SECURITY: JWT_SECRET has weak entropy! Generate a secure random secret using: openssl rand -base64 64'
         )
       }
-      
+
       // Require database in production
       if (!parsed.DATABASE_URL) {
         throw new Error('❌ DATABASE_URL is required in production')
@@ -130,7 +122,9 @@ function validateEnv() {
         console.warn('⚠️  WARNING: JWT_SECRET should be at least 64 characters even in development')
       }
       if (isWeakSecret(parsed.JWT_SECRET)) {
-        console.warn('⚠️  WARNING: JWT_SECRET contains weak patterns. Generate secure secret: openssl rand -base64 64')
+        console.warn(
+          '⚠️  WARNING: JWT_SECRET contains weak patterns. Generate secure secret: openssl rand -base64 64'
+        )
       }
     }
 

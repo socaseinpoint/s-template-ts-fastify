@@ -1,6 +1,6 @@
 import { Logger } from '@/utils/logger'
 import { IItemRepository } from '@/repositories/item.repository'
-import { ItemCategory, ItemStatus } from '@prisma/client'
+import { Item, ItemCategory, ItemStatus } from '@prisma/client'
 
 interface GetItemsParams {
   page?: number
@@ -12,6 +12,37 @@ interface GetItemsParams {
   status?: string
 }
 
+/**
+ * Item response DTO with normalized enums (lowercase)
+ */
+interface ItemResponseDto {
+  id: string
+  name: string
+  description: string | null
+  category: string
+  price: number
+  quantity: number
+  status: string
+  tags: string[]
+  metadata: unknown
+  userId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+/**
+ * Pagination response for items
+ */
+interface ItemsPaginationResponse {
+  items: ItemResponseDto[]
+  pagination: {
+    total: number
+    page: number
+    limit: number
+    totalPages: number
+  }
+}
+
 interface CreateItemDto {
   name: string
   description?: string
@@ -19,7 +50,7 @@ interface CreateItemDto {
   price: number
   quantity?: number
   tags?: string[]
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   userId: string
 }
 
@@ -31,7 +62,7 @@ interface UpdateItemDto {
   quantity?: number
   status?: string
   tags?: string[]
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export class ItemService {
@@ -41,42 +72,22 @@ export class ItemService {
     this.logger = new Logger('ItemService')
   }
 
-  async getAllItems(params: GetItemsParams): Promise<{
-    items: any[]
-    pagination: {
-      total: number
-      page: number
-      limit: number
-      totalPages: number
+  /**
+   * Convert Item entity to response DTO with normalized enums
+   */
+  private toResponseDto(item: Item): ItemResponseDto {
+    return {
+      ...item,
+      category: item.category.toLowerCase(),
+      status: item.status.toLowerCase(),
+      metadata: item.metadata || {},
     }
-  }> {
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      category,
-      status,
-    } = params
+  }
+
+  async getAllItems(params: GetItemsParams): Promise<ItemsPaginationResponse> {
+    const { page = 1, limit = 10, search, category, status } = params
 
     this.logger.debug(`Fetching items with params: ${JSON.stringify(params)}`)
-
-    // Build where clause
-    const where: any = {}
-
-    if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ]
-    }
-
-    if (category) {
-      where.category = category.toUpperCase() as ItemCategory
-    }
-
-    if (status) {
-      where.status = status.toUpperCase() as ItemStatus
-    }
 
     // Use repository
     const { items, total } = await this.itemRepository.findMany({
@@ -92,11 +103,7 @@ export class ItemService {
     const totalPages = Math.ceil(total / limit)
 
     return {
-      items: items.map(item => ({
-        ...item,
-        category: item.category.toLowerCase(),
-        status: item.status.toLowerCase(),
-      })),
+      items: items.map(item => this.toResponseDto(item)),
       pagination: {
         total,
         page,
@@ -106,7 +113,7 @@ export class ItemService {
     }
   }
 
-  async getItemById(id: string): Promise<any | null> {
+  async getItemById(id: string): Promise<ItemResponseDto | null> {
     this.logger.debug(`Fetching item with id: ${id}`)
 
     const item = await this.itemRepository.findById(id)
@@ -115,14 +122,10 @@ export class ItemService {
       return null
     }
 
-    return {
-      ...item,
-      category: item.category.toLowerCase(),
-      status: item.status.toLowerCase(),
-    }
+    return this.toResponseDto(item)
   }
 
-  async createItem(dto: CreateItemDto): Promise<any> {
+  async createItem(dto: CreateItemDto): Promise<ItemResponseDto> {
     this.logger.info(`Creating new item: ${dto.name}`)
 
     const item = await this.itemRepository.create({
@@ -138,18 +141,14 @@ export class ItemService {
 
     this.logger.info(`Item created with id: ${item.id}`)
 
-    return {
-      ...item,
-      category: item.category.toLowerCase(),
-      status: item.status.toLowerCase(),
-    }
+    return this.toResponseDto(item)
   }
 
-  async updateItem(id: string, dto: UpdateItemDto): Promise<any | null> {
+  async updateItem(id: string, dto: UpdateItemDto): Promise<ItemResponseDto | null> {
     this.logger.info(`Updating item with id: ${id}`)
 
     try {
-      const updateData: any = { ...dto }
+      const updateData: UpdateItemDto = { ...dto }
 
       if (dto.category) {
         updateData.category = dto.category.toUpperCase() as ItemCategory
@@ -161,15 +160,14 @@ export class ItemService {
 
       const item = await this.itemRepository.update(id, updateData)
 
-      return {
-        ...item,
-        category: item.category.toLowerCase(),
-        status: item.status.toLowerCase(),
-      }
+      return this.toResponseDto(item)
     } catch (error) {
       // Type guard for Prisma errors
-      if (error instanceof Error && 'code' in error && (error as any).code === 'P2025') {
-        return null
+      if (error instanceof Error && 'code' in error) {
+        const prismaError = error as { code: string }
+        if (prismaError.code === 'P2025') {
+          return null
+        }
       }
       throw error
     }
@@ -183,8 +181,11 @@ export class ItemService {
       return true
     } catch (error) {
       // Type guard for Prisma errors
-      if (error instanceof Error && 'code' in error && (error as any).code === 'P2025') {
-        return false
+      if (error instanceof Error && 'code' in error) {
+        const prismaError = error as { code: string }
+        if (prismaError.code === 'P2025') {
+          return false
+        }
       }
       throw error
     }

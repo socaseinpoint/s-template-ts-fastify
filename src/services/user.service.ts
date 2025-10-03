@@ -1,6 +1,6 @@
 import { Logger } from '@/utils/logger'
 import { IUserRepository } from '@/repositories/user.repository'
-import { Role } from '@prisma/client'
+import { Role, User } from '@prisma/client'
 
 interface GetUsersParams {
   page: number
@@ -15,6 +15,30 @@ interface UpdateUserDto {
   isActive?: boolean
 }
 
+/**
+ * User response DTO with normalized enums (lowercase)
+ */
+interface UserResponseDto {
+  id: string
+  email: string
+  name: string
+  phone: string | null
+  role: 'user' | 'admin' | 'moderator'
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+/**
+ * Pagination response for users
+ */
+interface UsersPaginationResponse {
+  users: UserResponseDto[]
+  total: number
+  page: number
+  limit: number
+}
+
 export class UserService {
   private logger: Logger
 
@@ -22,12 +46,23 @@ export class UserService {
     this.logger = new Logger('UserService')
   }
 
-  async getAllUsers(params: GetUsersParams): Promise<{
-    users: any[]
-    total: number
-    page: number
-    limit: number
-  }> {
+  /**
+   * Convert User entity to response DTO with normalized enums
+   */
+  private toResponseDto(user: User): UserResponseDto {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      phone: user.phone,
+      role: user.role.toLowerCase() as 'user' | 'admin' | 'moderator',
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    }
+  }
+
+  async getAllUsers(params: GetUsersParams): Promise<UsersPaginationResponse> {
     this.logger.debug(`Fetching users with params: ${JSON.stringify(params)}`)
 
     const { page, limit } = params
@@ -38,17 +73,14 @@ export class UserService {
     })
 
     return {
-      users: users.map(user => ({
-        ...user,
-        role: user.role.toLowerCase(),
-      })),
+      users: users.map(user => this.toResponseDto(user)),
       total,
       page,
       limit,
     }
   }
 
-  async getUserById(id: string): Promise<any | null> {
+  async getUserById(id: string): Promise<UserResponseDto | null> {
     this.logger.debug(`Fetching user with id: ${id}`)
 
     const user = await this.userRepository.findById(id)
@@ -57,13 +89,10 @@ export class UserService {
       return null
     }
 
-    return {
-      ...user,
-      role: user.role.toLowerCase(),
-    }
+    return this.toResponseDto(user)
   }
 
-  async updateUser(id: string, dto: UpdateUserDto): Promise<any | null> {
+  async updateUser(id: string, dto: UpdateUserDto): Promise<UserResponseDto | null> {
     this.logger.info(`Updating user with id: ${id}`)
 
     try {
@@ -72,14 +101,14 @@ export class UserService {
         role: dto.role ? (dto.role.toUpperCase() as Role) : undefined,
       })
 
-      return {
-        ...updatedUser,
-        role: updatedUser.role.toLowerCase(),
-      }
+      return this.toResponseDto(updatedUser)
     } catch (error) {
       // Type guard for Prisma errors
-      if (error instanceof Error && 'code' in error && (error as any).code === 'P2025') {
-        return null
+      if (error instanceof Error && 'code' in error) {
+        const prismaError = error as { code: string }
+        if (prismaError.code === 'P2025') {
+          return null
+        }
       }
       throw error
     }
@@ -93,8 +122,11 @@ export class UserService {
       return true
     } catch (error) {
       // Type guard for Prisma errors
-      if (error instanceof Error && 'code' in error && (error as any).code === 'P2025') {
-        return false
+      if (error instanceof Error && 'code' in error) {
+        const prismaError = error as { code: string }
+        if (prismaError.code === 'P2025') {
+          return false
+        }
       }
       throw error
     }
@@ -106,7 +138,7 @@ export class UserService {
     name: string
     phone?: string
     role?: Role
-  }): Promise<any> {
+  }): Promise<UserResponseDto> {
     const user = await this.userRepository.create({
       email: data.email,
       password: data.password,
@@ -117,9 +149,6 @@ export class UserService {
 
     this.logger.info(`Created user with id: ${user.id}`)
 
-    return {
-      ...user,
-      role: user.role.toLowerCase(),
-    }
+    return this.toResponseDto(user)
   }
 }

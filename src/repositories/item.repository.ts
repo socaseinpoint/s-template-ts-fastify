@@ -18,7 +18,7 @@ export interface CreateItemDto {
   quantity?: number
   status?: ItemStatus
   tags?: string[]
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   userId: string
 }
 
@@ -30,7 +30,7 @@ export interface UpdateItemDto {
   quantity?: number
   status?: ItemStatus
   tags?: string[]
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export interface FindManyItemsParams {
@@ -105,8 +105,18 @@ export class ItemRepository
     try {
       const { skip = 0, take = 10, where = {} } = params
 
-      // Build where clause
-      const whereClause: any = {}
+      // Build where clause with proper types
+      interface WhereClause {
+        userId?: string
+        category?: ItemCategory
+        status?: ItemStatus
+        name?: {
+          contains: string
+          mode: 'insensitive'
+        }
+      }
+
+      const whereClause: WhereClause = {}
       if (where.userId) whereClause.userId = where.userId
       if (where.category) whereClause.category = where.category
       if (where.status) whereClause.status = where.status
