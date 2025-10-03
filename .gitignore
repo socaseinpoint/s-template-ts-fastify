@@ -13,6 +13,10 @@ build/
 .env.local
 .env.*.local
 
+# BUT allow example files (safe to commit)
+!.env.example
+!.env.test.example
+
 # Logs
 logs/
 *.log

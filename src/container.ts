@@ -10,6 +10,7 @@ import { AuthService } from '@/modules/auth'
 import { UserService, UserRepository, type IUserRepository } from '@/modules/users'
 import { ItemService, ItemRepository, type IItemRepository } from '@/modules/items'
 import { RedisTokenRepository, type ITokenRepository } from '@/shared/cache/redis-token.repository'
+import { InMemoryTokenRepository } from '@/shared/cache/in-memory-token.repository'
 
 // Queue services
 import { QueueService } from '@/shared/queue/queue.service'
@@ -21,7 +22,7 @@ const logger = new Logger('Container')
 export interface ICradle {
   // Infrastructure
   prisma: PrismaClient
-  redis: FastifyRedis // Required for token storage and rate limiting
+  redis?: FastifyRedis // Optional (fallback to in-memory in development)
 
   // Repositories
   userRepository: IUserRepository
@@ -44,7 +45,7 @@ export interface ICradle {
 
 export interface ContainerOptions {
   prisma?: PrismaClient
-  redis: FastifyRedis // Required for token storage
+  redis?: FastifyRedis // Optional (fallback to in-memory in development)
   skipConnect?: boolean
   enableQueues?: boolean // Enable queue services (for MODE=all)
   redisConnection?: IORedis // IORedis connection for BullMQ (separate from Fastify Redis)
@@ -122,8 +123,27 @@ export async function createDIContainer(
   container.register({
     userRepository: asClass(UserRepository, { lifetime: Lifetime.SINGLETON }),
     itemRepository: asClass(ItemRepository, { lifetime: Lifetime.SINGLETON }),
-    tokenRepository: asClass(RedisTokenRepository, { lifetime: Lifetime.SINGLETON }),
   })
+
+  // Register token repository (Redis or in-memory fallback)
+  if (options.redis) {
+    container.register({
+      tokenRepository: asClass(RedisTokenRepository, { lifetime: Lifetime.SINGLETON }),
+    })
+    logger.info('✅ Token storage: Redis (distributed)')
+  } else {
+    // Fallback to in-memory for development only
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        '❌ PRODUCTION ERROR: Redis is required for token storage in production! ' +
+          'Set REDIS_URL in environment variables.'
+      )
+    }
+    container.register({
+      tokenRepository: asClass(InMemoryTokenRepository, { lifetime: Lifetime.SINGLETON }),
+    })
+    logger.warn('⚠️  Token storage: In-Memory (development only - not for production!)')
+  }
 
   // Register business services with SINGLETON lifetime
   // Services are stateless - all state is passed through method parameters

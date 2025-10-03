@@ -110,14 +110,23 @@ async function startWorkers(container: Awaited<DIContainer>) {
   // Import worker processors
   const { processWebhookJob } = await import('@/modules/jobs/webhook-processor.worker')
   const { QUEUE_NAMES } = await import('@/modules/jobs/webhook-processor.queue')
+  const { getQueueConfigWithEnvOverrides } = await import('@/config/queues')
 
-  // Register workers
+  // Register workers with per-queue configuration
+  const webhookConfig = getQueueConfigWithEnvOverrides(QUEUE_NAMES.WEBHOOK_PROCESSOR)
   workerService.createWorker(QUEUE_NAMES.WEBHOOK_PROCESSOR, processWebhookJob, {
-    concurrency: Config.QUEUE_CONCURRENCY,
+    concurrency: webhookConfig.concurrency,
   })
 
   logger.info('✅ All workers registered successfully')
-  logger.info(`🔄 Processing jobs with concurrency: ${Config.QUEUE_CONCURRENCY}`)
+  logger.info(`🔄 ${QUEUE_NAMES.WEBHOOK_PROCESSOR}: concurrency=${webhookConfig.concurrency}`)
+  // Add more workers here with their own configurations:
+  // const videoConfig = getQueueConfigWithEnvOverrides('video-generation')
+  // workerService.createWorker('video-generation', processVideoJob, {
+  //   concurrency: videoConfig.concurrency,
+  //   removeOnComplete: videoConfig.removeOnComplete,
+  //   removeOnFail: videoConfig.removeOnFail,
+  // })
 }
 
 // Start the server

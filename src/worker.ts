@@ -18,6 +18,7 @@ import { createRedisConnection, closeRedisConnection } from '@/shared/queue/redi
 import { WorkerService } from '@/shared/queue/worker.service'
 import { processWebhookJob } from '@/modules/jobs/webhook-processor.worker'
 import { QUEUE_NAMES } from '@/modules/jobs/webhook-processor.queue'
+import { getQueueConfigWithEnvOverrides } from '@/config/queues'
 
 const logger = new Logger('Worker')
 
@@ -39,7 +40,7 @@ const logger = new Logger('Worker')
  */
 
 let redisConnection: ReturnType<typeof createRedisConnection> | undefined
-let workerService: WorkerService
+let workerService: WorkerService | undefined
 
 async function startWorker() {
   try {
@@ -59,17 +60,19 @@ async function startWorker() {
     redisConnection = createRedisConnection()
 
     // Wait for Redis to be ready
+    const REDIS_TIMEOUT = Config.QUEUE_CONCURRENCY * 2000 || 10000
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Redis connection timeout'))
-      }, 10000)
+        reject(new Error(`Redis connection timeout after ${REDIS_TIMEOUT}ms`))
+      }, REDIS_TIMEOUT)
 
-      redisConnection.once('ready', () => {
+      redisConnection!.once('ready', () => {
         clearTimeout(timeout)
+        logger.info('✅ Redis connected successfully')
         resolve()
       })
 
-      redisConnection.once('error', (error: Error) => {
+      redisConnection!.once('error', (error: Error) => {
         clearTimeout(timeout)
         reject(error)
       })
@@ -78,17 +81,24 @@ async function startWorker() {
     // Create worker service
     workerService = new WorkerService(redisConnection)
 
-    // Register workers for each queue
+    // Register workers for each queue with per-queue configuration
     logger.info('Registering workers...')
 
-    // Example: Webhook processor worker
+    // Webhook processor worker
+    const webhookConfig = getQueueConfigWithEnvOverrides(QUEUE_NAMES.WEBHOOK_PROCESSOR)
     workerService.createWorker(QUEUE_NAMES.WEBHOOK_PROCESSOR, processWebhookJob, {
-      concurrency: Config.QUEUE_CONCURRENCY,
+      concurrency: webhookConfig.concurrency,
     })
+    logger.info(`📋 ${QUEUE_NAMES.WEBHOOK_PROCESSOR}: concurrency=${webhookConfig.concurrency}`)
 
-    // Add more workers here as needed:
-    // workerService.createWorker('video-generation', processVideoJob)
-    // workerService.createWorker('email-sender', processEmailJob)
+    // Add more workers here with their own configurations:
+    // const videoConfig = getQueueConfigWithEnvOverrides('video-generation')
+    // workerService.createWorker('video-generation', processVideoJob, {
+    //   concurrency: videoConfig.concurrency,
+    //   removeOnComplete: videoConfig.removeOnComplete,
+    //   removeOnFail: videoConfig.removeOnFail,
+    // })
+    // logger.info(`📋 video-generation: concurrency=${videoConfig.concurrency}`)
 
     logger.info('✅ All workers registered successfully')
 
@@ -96,7 +106,6 @@ async function startWorker() {
     setupShutdownHandlers()
 
     logger.info('✅ Worker started successfully')
-    logger.info(`🔄 Processing jobs with concurrency: ${Config.QUEUE_CONCURRENCY}`)
   } catch (error) {
     logger.error('❌ Failed to start worker', error)
     process.exit(1)
@@ -107,42 +116,55 @@ async function startWorker() {
  * Setup graceful shutdown handlers
  */
 function setupShutdownHandlers() {
+  const SHUTDOWN_TIMEOUT = 30000 // 30 seconds
+
   const shutdown = async (signal: string) => {
     logger.info(`\n${signal} received, starting graceful shutdown...`)
+
+    // Set hard timeout for shutdown
+    const forceExitTimeout = setTimeout(() => {
+      logger.error('❌ Graceful shutdown timeout - forcing exit')
+      process.exit(1)
+    }, SHUTDOWN_TIMEOUT)
 
     try {
       // 1. Stop accepting new jobs (close workers)
       if (workerService) {
         logger.info('Closing workers...')
         await workerService.close()
+        logger.info('✅ Workers closed')
       }
 
       // 2. Close Redis connection
       if (redisConnection) {
+        logger.info('Closing Redis connection...')
         await closeRedisConnection(redisConnection)
+        logger.info('✅ Redis connection closed')
       }
 
+      clearTimeout(forceExitTimeout)
       logger.info('✅ Graceful shutdown completed')
       process.exit(0)
     } catch (error) {
+      clearTimeout(forceExitTimeout)
       logger.error('❌ Error during shutdown', error)
       process.exit(1)
     }
   }
 
   // Handle shutdown signals
-  process.on('SIGTERM', () => shutdown('SIGTERM'))
-  process.on('SIGINT', () => shutdown('SIGINT'))
+  process.on('SIGTERM', () => void shutdown('SIGTERM'))
+  process.on('SIGINT', () => void shutdown('SIGINT'))
 
   // Handle uncaught errors
   process.on('uncaughtException', (error: Error) => {
     logger.error('❌ Uncaught Exception', error)
-    shutdown('UNCAUGHT_EXCEPTION')
+    void shutdown('UNCAUGHT_EXCEPTION')
   })
 
   process.on('unhandledRejection', (reason: unknown) => {
     logger.error('❌ Unhandled Rejection', reason)
-    shutdown('UNHANDLED_REJECTION')
+    void shutdown('UNHANDLED_REJECTION')
   })
 }
 

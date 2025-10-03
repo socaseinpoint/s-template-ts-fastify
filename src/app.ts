@@ -72,34 +72,43 @@ export async function createApp(): Promise<AppContext> {
   // Register request context plugin (correlation ID, tracing)
   await fastify.register(requestContextPlugin)
 
-  // Register Redis (REQUIRED for all environments)
+  // Register Redis (OPTIONAL in development, REQUIRED in production)
   let redisClient
-  if (!Config.REDIS_URL && !Config.REDIS_HOST) {
-    logger.error('❌ Redis configuration is missing - FATAL')
-    throw new Error(
-      'Redis is required for token storage and rate limiting. ' +
-        'Set REDIS_URL or REDIS_HOST in environment variables.'
-    )
-  }
+  const hasRedisConfig = Config.REDIS_URL || Config.REDIS_HOST
 
-  try {
-    await fastify.register(fastifyRedis, {
-      url: Config.REDIS_URL,
-      host: Config.REDIS_HOST,
-      port: Config.REDIS_PORT,
-      password: Config.REDIS_PASSWORD,
-      // Graceful connection handling
-      lazyConnect: false,
-      enableReadyCheck: true,
-      maxRetriesPerRequest: 3,
-    })
-    redisClient = fastify.redis
-    logger.info('✅ Redis connected successfully')
-  } catch (error) {
-    logger.error('❌ Redis connection failed - FATAL', error)
-    throw new Error(
-      'Failed to connect to Redis. Check REDIS_URL/REDIS_HOST configuration and ensure Redis is running.'
-    )
+  if (hasRedisConfig) {
+    try {
+      await fastify.register(fastifyRedis, {
+        url: Config.REDIS_URL,
+        host: Config.REDIS_HOST,
+        port: Config.REDIS_PORT,
+        password: Config.REDIS_PASSWORD,
+        // Graceful connection handling
+        lazyConnect: false,
+        enableReadyCheck: true,
+        maxRetriesPerRequest: 3,
+      })
+      redisClient = fastify.redis
+      logger.info('✅ Redis connected successfully')
+    } catch (error) {
+      if (Config.NODE_ENV === 'production') {
+        logger.error('❌ Redis connection failed - FATAL (production)', error)
+        throw new Error(
+          'Failed to connect to Redis in production. Check REDIS_URL/REDIS_HOST configuration.'
+        )
+      }
+      logger.warn('⚠️  Redis connection failed - falling back to in-memory storage', error)
+      redisClient = undefined
+    }
+  } else {
+    if (Config.NODE_ENV === 'production') {
+      throw new Error(
+        '❌ PRODUCTION ERROR: Redis is required in production! ' +
+          'Set REDIS_URL or REDIS_HOST in environment variables.'
+      )
+    }
+    logger.warn('⚠️  Redis not configured - using in-memory fallbacks (development only)')
+    redisClient = undefined
   }
 
   // Check if we need to enable queues (MODE=all)
@@ -139,25 +148,35 @@ export async function createApp(): Promise<AppContext> {
 
   // Rate limiting - configurable via ENABLE_RATE_LIMIT env var
   if (Config.ENABLE_RATE_LIMIT) {
-    await fastify.register(fastifyRateLimit, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rateLimitConfig: any = {
       max: RATE_LIMITS.GLOBAL.MAX,
       timeWindow: RATE_LIMITS.GLOBAL.TIMEWINDOW,
       ban: RATE_LIMITS.GLOBAL.BAN,
       cache: 10000,
-      // Use Redis for distributed rate limiting
-      redis: redisClient,
-      keyGenerator: request => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      keyGenerator: (request: any) => {
         return request.ip || (request.headers['x-forwarded-for'] as string) || 'unknown'
       },
-      errorResponseBuilder: (_, context) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      errorResponseBuilder: (_: any, context: any) => {
         return {
           error: 'Too many requests',
           code: 429,
           message: `Rate limit exceeded. Try again in ${Math.ceil(context.ttl / 1000)} seconds.`,
         }
       },
-    })
-    logger.info('✅ Rate limiting enabled (storage: Redis - distributed)')
+    }
+
+    // Use Redis if available, otherwise in-memory (local only)
+    if (redisClient) {
+      rateLimitConfig.redis = redisClient
+      await fastify.register(fastifyRateLimit, rateLimitConfig)
+      logger.info('✅ Rate limiting enabled (storage: Redis - distributed)')
+    } else {
+      await fastify.register(fastifyRateLimit, rateLimitConfig)
+      logger.warn('⚠️  Rate limiting enabled (storage: In-Memory - single instance only)')
+    }
   } else {
     logger.warn('⚠️  Rate limiting disabled (set ENABLE_RATE_LIMIT=true to enable)')
   }
