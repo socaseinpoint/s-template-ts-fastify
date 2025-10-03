@@ -41,9 +41,9 @@ export async function createApp(): Promise<AppContext> {
   logger.info('Creating Fastify application...')
 
   const fastify = Fastify({
-    requestTimeout: 30000, // 30 seconds
-    connectionTimeout: 10000, // 10 seconds
-    keepAliveTimeout: 5000, // 5 seconds
+    requestTimeout: Config.REQUEST_TIMEOUT,
+    connectionTimeout: Config.CONNECTION_TIMEOUT,
+    keepAliveTimeout: Config.KEEP_ALIVE_TIMEOUT,
     logger:
       Config.NODE_ENV === 'development'
         ? {
@@ -74,9 +74,17 @@ export async function createApp(): Promise<AppContext> {
 
   // Register Redis (OPTIONAL in development, REQUIRED in production)
   let redisClient
-  const hasRedisConfig = Config.REDIS_URL || Config.REDIS_HOST
+  const { validateRedisConfig } = await import('@/shared/utils/env-validation')
 
-  if (hasRedisConfig) {
+  // Validate Redis configuration
+  const redisValidation = validateRedisConfig({
+    redisUrl: Config.REDIS_URL,
+    redisHost: Config.REDIS_HOST,
+    nodeEnv: Config.NODE_ENV,
+    context: 'API services (rate limiting, caching)',
+  })
+
+  if (redisValidation.isConfigured) {
     try {
       await fastify.register(fastifyRedis, {
         url: Config.REDIS_URL,
@@ -101,13 +109,6 @@ export async function createApp(): Promise<AppContext> {
       redisClient = undefined
     }
   } else {
-    if (Config.NODE_ENV === 'production') {
-      throw new Error(
-        '❌ PRODUCTION ERROR: Redis is required in production! ' +
-          'Set REDIS_URL or REDIS_HOST in environment variables.'
-      )
-    }
-    logger.warn('⚠️  Redis not configured - using in-memory fallbacks (development only)')
     redisClient = undefined
   }
 
@@ -148,18 +149,15 @@ export async function createApp(): Promise<AppContext> {
 
   // Rate limiting - configurable via ENABLE_RATE_LIMIT env var
   if (Config.ENABLE_RATE_LIMIT) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rateLimitConfig: any = {
+    const rateLimitConfig: Parameters<typeof fastifyRateLimit>[1] = {
       max: RATE_LIMITS.GLOBAL.MAX,
       timeWindow: RATE_LIMITS.GLOBAL.TIMEWINDOW,
       ban: RATE_LIMITS.GLOBAL.BAN,
       cache: 10000,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      keyGenerator: (request: any) => {
+      keyGenerator: request => {
         return request.ip || (request.headers['x-forwarded-for'] as string) || 'unknown'
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      errorResponseBuilder: (_: any, context: any) => {
+      errorResponseBuilder: (_, context) => {
         return {
           error: 'Too many requests',
           code: 429,

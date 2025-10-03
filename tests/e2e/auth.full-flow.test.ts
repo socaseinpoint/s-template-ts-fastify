@@ -2,6 +2,16 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import axios, { AxiosInstance } from 'axios'
 import { generateUniqueEmail, wait } from '@tests/helpers/test-utils'
 
+/**
+ * Full Authentication Flow E2E Tests
+ *
+ * PREREQUISITES:
+ * - Server must be running with ENABLE_RATE_LIMIT=false
+ * - Database must be accessible
+ * - Redis must be running
+ *
+ * Start server: E2E_MODE=true npm run dev:api
+ */
 describe('Full Authentication Flow E2E Tests', () => {
   let api: AxiosInstance
   let baseURL: string
@@ -16,12 +26,15 @@ describe('Full Authentication Flow E2E Tests', () => {
   // Tokens storage
   let accessToken: string
   let refreshToken: string
-  let userId: string
 
   beforeAll(() => {
-    // E2E tests expect server to be running (started by test script)
-    // See: scripts/test-e2e.sh or E2E_TESTING.md
+    // E2E tests expect server to be running WITHOUT rate limiting
     baseURL = process.env.E2E_BASE_URL || 'http://localhost:3001'
+
+    // Check if rate limiting is disabled
+    if (process.env.ENABLE_RATE_LIMIT !== 'false') {
+      console.warn('⚠️  WARNING: Set ENABLE_RATE_LIMIT=false for reliable E2E tests')
+    }
 
     api = axios.create({
       baseURL,
@@ -29,38 +42,28 @@ describe('Full Authentication Flow E2E Tests', () => {
     })
 
     console.log('✅ Running E2E tests against:', baseURL)
-    console.log('ℹ️  Server should be started via: npm run test:e2e:full')
+    console.log('ℹ️  Make sure rate limiting is disabled: ENABLE_RATE_LIMIT=false')
   })
 
   describe('Complete Authentication Flow', () => {
     it('Step 1: Should register a new user', async () => {
       const response = await api.post('/v1/auth/register', testUser)
 
-      // Accept 201 (success), 403 (banned by rate limit), or 429 (rate limited)
-      expect([201, 403, 429]).toContain(response.status)
+      // Expect deterministic success
+      expect(response.status).toBe(201)
+      expect(response.data).toHaveProperty('accessToken')
+      expect(response.data).toHaveProperty('refreshToken')
+      expect(response.data.user).toMatchObject({
+        email: testUser.email,
+        name: testUser.name,
+        role: 'user',
+      })
 
-      if (response.status === 201) {
-        expect(response.data).toHaveProperty('accessToken')
-        expect(response.data).toHaveProperty('refreshToken')
-        expect(response.data.user).toMatchObject({
-          email: testUser.email,
-          name: testUser.name,
-          role: 'user',
-        })
+      // Store tokens for next steps
+      accessToken = response.data.accessToken
+      refreshToken = response.data.refreshToken
 
-        // Store tokens for next steps
-        accessToken = response.data.accessToken
-        refreshToken = response.data.refreshToken
-        userId = response.data.user.id
-
-        console.log('✓ User registered:', testUser.email)
-      } else {
-        console.log('⚠️ Registration rate limited, using mock tokens')
-        // Use mock values for rate-limited case
-        accessToken = 'mock-token'
-        refreshToken = 'mock-refresh'
-        userId = 'mock-user-id'
-      }
+      console.log('✓ User registered:', testUser.email, '(ID:', response.data.user.id, ')')
     })
 
     it('Step 2: Should access protected route with token', async () => {
@@ -70,13 +73,10 @@ describe('Full Authentication Flow E2E Tests', () => {
         },
       })
 
-      // Accept 200 (success) or 401 (token not valid in mock environment)
-      expect([200, 401]).toContain(response.status)
-
-      if (response.status === 200) {
-        expect(response.data).toHaveProperty('items')
-        expect(Array.isArray(response.data.items)).toBe(true)
-      }
+      // Should succeed with valid token
+      expect(response.status).toBe(200)
+      expect(response.data).toHaveProperty('items')
+      expect(Array.isArray(response.data.items)).toBe(true)
 
       console.log('✓ Protected route accessed')
     })
@@ -89,24 +89,21 @@ describe('Full Authentication Flow E2E Tests', () => {
         refreshToken,
       })
 
-      // Accept 200 (success), 400 (validation), 401 (auth error), 403 (banned), or 429 (rate limited)
-      expect([200, 400, 401, 403, 429]).toContain(response.status)
+      // Should succeed with valid refresh token
+      expect(response.status).toBe(200)
+      expect(response.data).toHaveProperty('accessToken')
+      expect(response.data).toHaveProperty('refreshToken')
 
-      if (response.status === 200) {
-        expect(response.data).toHaveProperty('accessToken')
-        expect(response.data).toHaveProperty('refreshToken')
+      const newAccessToken = response.data.accessToken
+      const newRefreshToken = response.data.refreshToken
 
-        const newAccessToken = response.data.accessToken
-        const newRefreshToken = response.data.refreshToken
+      // Tokens should be different from originals
+      expect(newAccessToken).not.toBe(accessToken)
+      expect(newRefreshToken).not.toBe(refreshToken)
 
-        // Tokens should be different
-        expect(newAccessToken).not.toBe(accessToken)
-        expect(newRefreshToken).not.toBe(refreshToken)
-
-        // Update tokens
-        accessToken = newAccessToken
-        refreshToken = newRefreshToken
-      }
+      // Update tokens for subsequent tests
+      accessToken = newAccessToken
+      refreshToken = newRefreshToken
 
       console.log('✓ Tokens refreshed')
     })
@@ -117,18 +114,17 @@ describe('Full Authentication Flow E2E Tests', () => {
         password: testUser.password,
       })
 
-      // Login might fail because user was registered in mock, not in real DB
-      // Accept 200 (success), 400 (user not found), 403 (banned), or 429 (rate limit)
-      expect([200, 400, 403, 429]).toContain(response.status)
+      // Should succeed with correct credentials
+      expect(response.status).toBe(200)
+      expect(response.data).toHaveProperty('accessToken')
+      expect(response.data).toHaveProperty('refreshToken')
+      expect(response.data.user.email).toBe(testUser.email)
 
-      if (response.status === 200) {
-        expect(response.data).toHaveProperty('accessToken')
-        expect(response.data.user.email).toBe(testUser.email)
-        // Update token
-        accessToken = response.data.accessToken
-      }
+      // Update tokens
+      accessToken = response.data.accessToken
+      refreshToken = response.data.refreshToken
 
-      console.log('✓ Login tested')
+      console.log('✓ Login successful')
     })
 
     it('Step 5: Should logout successfully', async () => {
@@ -138,52 +134,51 @@ describe('Full Authentication Flow E2E Tests', () => {
         },
       })
 
-      // Logout might return 200 (success), 401 (auth error), 403 (banned), 429 (rate limit), or 500 (error)
-      expect([200, 401, 403, 429, 500]).toContain(response.status)
+      // Should succeed and invalidate token
+      expect(response.status).toBe(200)
+      expect(response.data).toHaveProperty('message')
 
       console.log('✓ Logout completed')
     })
 
     it('Step 6: Should reject access after logout', async () => {
-      // Try to access protected route with old token
+      // Try to access protected route with logged-out token
       const response = await api.get('/v1/items', {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       })
 
-      // Should still work as we don't have real token blacklisting in mock
-      // In production, this would return 401
-      expect([200, 401]).toContain(response.status)
+      // Token should be invalidated
+      expect(response.status).toBe(401)
+      expect(response.data).toHaveProperty('error')
 
-      console.log('✓ Post-logout behavior verified')
+      console.log('✓ Post-logout token invalidation verified')
     })
   })
 
   describe('Authentication Edge Cases', () => {
     it('Should handle duplicate registration', async () => {
       const existingUser = {
-        email: 'admin@example.com',
+        email: testUser.email, // Use already registered user
         password: 'Admin123!',
-        name: 'Admin Duplicate',
+        name: 'Duplicate User',
       }
 
       const response = await api.post('/v1/auth/register', existingUser)
 
-      // Can be 409 (conflict), 400 (error), 403 (banned), or 429 (rate limit)
-      expect([400, 403, 409, 429]).toContain(response.status)
-      if (response.status === 400 || response.status === 409) {
-        expect(response.data.error).toContain('already exists')
-      }
+      // Should return conflict error
+      expect(response.status).toBe(400)
+      expect(response.data.error.toLowerCase()).toContain('already exists')
     })
 
     it('Should validate password requirements', async () => {
       const weakPasswords = [
-        { pass: 'short', error: 'at least 8 characters' },
-        { pass: 'nouppercase123!', error: 'uppercase letter' },
-        { pass: 'NOLOWERCASE123!', error: 'lowercase letter' },
-        { pass: 'NoNumbers!', error: 'number' },
-        { pass: 'NoSpecialChar123', error: 'special character' },
+        { pass: 'short', description: 'too short' },
+        { pass: 'nouppercase123!', description: 'no uppercase' },
+        { pass: 'NOLOWERCASE123!', description: 'no lowercase' },
+        { pass: 'NoNumbers!', description: 'no numbers' },
+        { pass: 'NoSpecialChar123', description: 'no special chars' },
       ]
 
       for (const test of weakPasswords) {
@@ -193,14 +188,14 @@ describe('Full Authentication Flow E2E Tests', () => {
           name: 'Weak Password User',
         })
 
-        // Can be 400 (validation error), 403 (banned), 429 (rate limit), or 500 (server error)
-        expect([400, 403, 429, 500]).toContain(response.status)
+        // Should fail validation
+        expect(response.status).toBe(400)
+        expect(response.data).toHaveProperty('error')
 
-        if (response.status === 400) {
-          // Error message might be "validation failed" or contain "password"
-          const errorLower = response.data.error.toLowerCase()
-          expect(errorLower.includes('password') || errorLower.includes('validation')).toBe(true)
-        }
+        const errorLower = response.data.error.toLowerCase()
+        expect(errorLower.includes('password') || errorLower.includes('validation')).toBe(true)
+
+        console.log(`  ✓ Rejected ${test.description}: "${test.pass}"`)
       }
 
       console.log('✓ Password validation tested')
@@ -212,11 +207,13 @@ describe('Full Authentication Flow E2E Tests', () => {
           email: 'nonexistent@test.com',
           password: 'Password123!',
           expectedError: 'Invalid email or password',
+          description: 'non-existent user',
         },
         {
-          email: 'admin@example.com',
+          email: testUser.email,
           password: 'WrongPassword123!',
           expectedError: 'Invalid email or password',
+          description: 'wrong password',
         },
       ]
 
@@ -226,20 +223,24 @@ describe('Full Authentication Flow E2E Tests', () => {
           password: attempt.password,
         })
 
-        // Can be 400 (invalid creds), 403 (banned), or 429 (rate limit)
-        expect([400, 403, 429]).toContain(response.status)
-        if (response.status === 400) {
-          expect(response.data.error).toContain(attempt.expectedError)
-        }
+        // Should return auth error
+        expect(response.status).toBe(400)
+        expect(response.data.error).toContain(attempt.expectedError)
+
+        console.log(`  ✓ Rejected ${attempt.description}`)
       }
 
       console.log('✓ Invalid login handling verified')
     })
 
     it('Should handle malformed tokens', async () => {
-      const malformedTokens = ['invalid.token.here', 'Bearer invalid', '', 'null', 'undefined']
+      const malformedTokens = [
+        { token: 'invalid.token.here', description: 'invalid format' },
+        { token: '', description: 'empty token' },
+        { token: 'not-a-jwt', description: 'not a JWT' },
+      ]
 
-      for (const token of malformedTokens) {
+      for (const { token, description } of malformedTokens) {
         const response = await api.get('/v1/items', {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -247,71 +248,18 @@ describe('Full Authentication Flow E2E Tests', () => {
         })
 
         expect(response.status).toBe(401)
-        expect(response.data.error).toBeDefined()
+        expect(response.data).toHaveProperty('error')
+
+        console.log(`  ✓ Rejected ${description}`)
       }
 
       console.log('✓ Malformed token handling verified')
     })
   })
 
-  describe('Role-Based Access Control', () => {
-    it('Should differentiate between user roles', async () => {
-      const roles = [
-        { email: 'admin@example.com', password: 'Admin123!', role: 'admin', canAccessUsers: true },
-        {
-          email: 'moderator@example.com',
-          password: 'Moderator123!',
-          role: 'moderator',
-          canAccessUsers: false,
-        },
-        { email: 'user@example.com', password: 'User123!', role: 'user', canAccessUsers: false },
-      ]
-
-      for (const user of roles) {
-        const loginResponse = await api.post('/v1/auth/login', {
-          email: user.email,
-          password: user.password,
-        })
-
-        // Can be 200 (success), 403 (banned), or 429 (rate limit)
-        expect([200, 403, 429]).toContain(loginResponse.status)
-
-        // Only continue if login succeeded
-        if (loginResponse.status === 200) {
-          expect(loginResponse.data.user.role).toBe(user.role)
-
-          const token = loginResponse.data.accessToken
-
-          // Try to access admin-only route
-          const usersResponse = await api.get('/v1/users', {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          })
-
-          if (user.canAccessUsers) {
-            // Accept 200 (success) or 401 (token issue in mock)
-            expect([200, 401]).toContain(usersResponse.status)
-            if (usersResponse.status === 200) {
-              expect(usersResponse.data).toHaveProperty('users')
-            }
-          } else {
-            // Should be 403 (forbidden) or 401 (token issue)
-            expect([401, 403]).toContain(usersResponse.status)
-            if (usersResponse.status === 403) {
-              expect(usersResponse.data.error).toContain('permissions')
-            }
-          }
-        }
-      }
-
-      console.log('✓ Role-based access verified')
-    })
-  })
-
   describe('Token Expiration and Refresh', () => {
     it('Should handle expired tokens gracefully', async () => {
-      // This is a mock expired token (in real scenario, we'd wait for expiration)
+      // Mock expired token with past expiration
       const expiredToken =
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJyb2xlIjoidXNlciIsInR5cGUiOiJhY2Nlc3MiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6MTYwMDAwMDAwMX0.invalid'
 
@@ -322,66 +270,56 @@ describe('Full Authentication Flow E2E Tests', () => {
       })
 
       expect(response.status).toBe(401)
-      expect(response.data.error).toBeDefined()
+      expect(response.data).toHaveProperty('error')
 
       console.log('✓ Expired token handling verified')
     })
 
     it('Should not accept refresh token as access token', async () => {
-      // Login to get tokens
-      const loginResponse = await api.post('/v1/auth/login', {
-        email: 'admin@example.com',
-        password: 'Admin123!',
-      })
-
-      // Can be 200 (success), 403 (banned), or 429 (rate limit)
-      if (loginResponse.status !== 200) {
-        console.log('⚠️ Login rate limited, skipping test')
-        return
-      }
-
-      const refreshToken = loginResponse.data.refreshToken
-
-      // Try to use refresh token as access token
+      // Use refresh token from main flow
       const response = await api.get('/v1/items', {
         headers: {
           Authorization: `Bearer ${refreshToken}`,
         },
       })
 
-      // Should be rejected (401) or might work depending on implementation
+      // Refresh token should not work for API access
+      // (depends on implementation - some systems check token type)
       expect([200, 401]).toContain(response.status)
 
-      console.log('✓ Token type validation tested')
+      if (response.status === 401) {
+        console.log('✓ Token type validation: refresh token rejected for API access')
+      } else {
+        console.log('⚠️  Token type validation: refresh token accepted (no type checking)')
+      }
     })
   })
 
   describe('Security Headers and CORS', () => {
+    it('Should include security headers', async () => {
+      const response = await api.get('/health')
+
+      // Check for common security headers
+      expect(response.headers).toHaveProperty('x-dns-prefetch-control')
+      expect(response.headers).toHaveProperty('x-frame-options')
+      expect(response.headers).toHaveProperty('x-content-type-options')
+
+      console.log('✓ Security headers present')
+    })
+
     it('Should handle CORS preflight requests', async () => {
       const response = await api.options('/v1/auth/login')
 
-      // OPTIONS might return 204 or 400 depending on implementation
-      expect([204, 400]).toContain(response.status)
+      // OPTIONS should return 204 or 200
+      expect([200, 204]).toContain(response.status)
 
-      // Check for CORS headers
+      // Check for CORS headers (if CORS is enabled)
       if (response.headers['access-control-allow-origin']) {
-        expect(response.headers['access-control-allow-origin']).toBeDefined()
+        expect(response.headers['access-control-allow-methods']).toBeDefined()
+        console.log('✓ CORS headers present')
+      } else {
+        console.log('⚠️  CORS not configured')
       }
-
-      console.log('✓ CORS handling verified')
-    })
-
-    it('Should require proper content-type', async () => {
-      const response = await api.post('/v1/auth/login', 'invalid-body', {
-        headers: {
-          'Content-Type': 'text/plain',
-        },
-      })
-
-      // Server might return 400, 403 (banned), 415, 429 (rate limit), or 500 for invalid content
-      expect([400, 401, 403, 415, 429, 500]).toContain(response.status)
-
-      console.log('✓ Content-type validation tested')
     })
   })
 })

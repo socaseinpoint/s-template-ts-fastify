@@ -24,8 +24,8 @@ export interface ICradle {
   prisma: PrismaClient
   redis?: FastifyRedis // Optional (fallback to in-memory in development)
   metrics?: {
-    queueJobsProcessed: any
-    queueJobDuration: any
+    queueJobsProcessed: unknown
+    queueJobDuration: unknown
   }
 
   // Repositories
@@ -73,39 +73,37 @@ export async function createDIContainer(
     // Use provided Prisma client (for testing)
     prismaClient = options.prisma
     logger.info('Using provided Prisma client')
-  } else if (!process.env.DATABASE_URL) {
-    // No DATABASE_URL - mock for unit tests
-    if (process.env.NODE_ENV === 'test') {
-      logger.warn('⚠️  Unit test mode: using mock Prisma client')
-      prismaClient = {} as PrismaClient
-    } else {
-      throw new Error('DATABASE_URL is required in non-test environments')
-    }
   } else {
-    // Create new Prisma client and connect
-    logger.info('Initializing Prisma client...')
+    // Validate DATABASE_URL
+    const { validateDatabaseConfig } = await import('@/shared/utils/env-validation')
+    validateDatabaseConfig(process.env.DATABASE_URL, process.env.NODE_ENV)
 
-    // Configure connection pooling based on environment
-    const connectionLimit = process.env.NODE_ENV === 'production' ? 20 : 10
+    if (!process.env.DATABASE_URL && process.env.NODE_ENV === 'test') {
+      // Unit test mode - use mock
+      const { mockDeep } = await import('vitest-mock-extended')
+      prismaClient = mockDeep<PrismaClient>()
+      logger.warn('⚠️  Unit test mode: using mocked Prisma client')
+    } else {
+      // Create new Prisma client and connect
+      logger.info('Initializing Prisma client...')
 
-    prismaClient = new PrismaClient({
-      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-      // Connection pooling configuration
-      // Note: These are passed to the underlying database driver
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
+      prismaClient = new PrismaClient({
+        log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+        datasources: {
+          db: {
+            url: process.env.DATABASE_URL,
+          },
         },
-      },
-    })
+      })
 
-    if (!options.skipConnect) {
-      try {
-        await prismaClient.$connect()
-        logger.info(`✅ Prisma client connected to database (pool size: ${connectionLimit})`)
-      } catch (error) {
-        logger.error('❌ Failed to connect to database', error)
-        throw new Error(`Database connection failed: ${error}`)
+      if (!options.skipConnect) {
+        try {
+          await prismaClient.$connect()
+          logger.info('✅ Prisma client connected to database')
+        } catch (error) {
+          logger.error('❌ Failed to connect to database', error)
+          throw new Error(`Database connection failed: ${error}`)
+        }
       }
     }
   }
@@ -130,23 +128,28 @@ export async function createDIContainer(
   })
 
   // Register token repository (Redis or in-memory fallback)
+  const { validateRedisConfig: validateRedisForTokens } = await import(
+    '@/shared/utils/env-validation'
+  )
+
+  // Validate Redis for token storage
+  validateRedisForTokens({
+    redisUrl: process.env.REDIS_URL,
+    redisHost: process.env.REDIS_HOST,
+    nodeEnv: process.env.NODE_ENV || 'development',
+    context: 'token storage',
+  })
+
   if (options.redis) {
     container.register({
       tokenRepository: asClass(RedisTokenRepository, { lifetime: Lifetime.SINGLETON }),
     })
     logger.info('✅ Token storage: Redis (distributed)')
   } else {
-    // Fallback to in-memory for development only
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(
-        '❌ PRODUCTION ERROR: Redis is required for token storage in production! ' +
-          'Set REDIS_URL in environment variables.'
-      )
-    }
     container.register({
       tokenRepository: asClass(InMemoryTokenRepository, { lifetime: Lifetime.SINGLETON }),
     })
-    logger.warn('⚠️  Token storage: In-Memory (development only - not for production!)')
+    logger.warn('⚠️  Token storage: In-Memory (development only)')
   }
 
   // Register business services with SINGLETON lifetime

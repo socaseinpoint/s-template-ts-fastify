@@ -35,13 +35,30 @@ const envSchema = z.object({
       val => {
         // In production, enforce strong entropy and no weak patterns
         if (process.env.NODE_ENV === 'production') {
-          return !isWeakSecret(val) && hasStrongEntropy(val)
+          const weak = isWeakSecret(val)
+          const lowEntropy = !hasStrongEntropy(val)
+
+          if (weak || lowEntropy) {
+            throw new Error(
+              '❌ SECURITY: JWT_SECRET is weak! ' +
+                (weak ? 'Contains default patterns. ' : '') +
+                (lowEntropy ? 'Insufficient entropy. ' : '') +
+                'Generate secure secret: openssl rand -base64 64'
+            )
+          }
+          return true
+        }
+        // In development, only warn
+        if (isWeakSecret(val)) {
+          console.warn(
+            '⚠️  WARNING: JWT_SECRET contains weak patterns. Generate secure secret: openssl rand -base64 64'
+          )
         }
         return true
       },
       {
         message:
-          '❌ SECURITY: JWT_SECRET is weak or contains default patterns! Generate secure secret: openssl rand -base64 64',
+          '❌ SECURITY: JWT_SECRET validation failed! Generate secure secret: openssl rand -base64 64',
       }
     )
     .default('your-secret-key-change-this-in-production-min-64-chars-for-security'),
@@ -51,6 +68,11 @@ const envSchema = z.object({
   // Service specific configuration
   SERVICE_NAME: z.string().default('fastify-service'),
   SERVICE_VERSION: z.string().default('1.0.0'),
+
+  // Fastify server timeouts (in milliseconds)
+  REQUEST_TIMEOUT: z.coerce.number().int().positive().default(30000), // 30 seconds
+  CONNECTION_TIMEOUT: z.coerce.number().int().positive().default(10000), // 10 seconds
+  KEEP_ALIVE_TIMEOUT: z.coerce.number().int().positive().default(5000), // 5 seconds
 
   // CORS
   CORS_ORIGIN: z.string().default('*'),
@@ -112,40 +134,9 @@ function validateEnv() {
 
     // Additional production checks
     if (parsed.NODE_ENV === 'production') {
-      // Check for weak/default secrets
-      if (isWeakSecret(parsed.JWT_SECRET)) {
-        throw new Error(
-          '❌ SECURITY: JWT_SECRET contains weak or default patterns! Use a cryptographically secure random string.'
-        )
-      }
-
-      // Check minimum length
-      if (parsed.JWT_SECRET.length < 64) {
-        throw new Error('❌ SECURITY: JWT_SECRET must be at least 64 characters in production')
-      }
-
-      // Check entropy
-      if (!hasStrongEntropy(parsed.JWT_SECRET)) {
-        throw new Error(
-          '❌ SECURITY: JWT_SECRET has weak entropy! Generate a secure random secret using: openssl rand -base64 64'
-        )
-      }
-
       // Require database in production
       if (!parsed.DATABASE_URL) {
         throw new Error('❌ DATABASE_URL is required in production')
-      }
-    }
-
-    // Warn about weak secrets in non-production
-    if (parsed.NODE_ENV !== 'production') {
-      if (parsed.JWT_SECRET.length < 64) {
-        console.warn('⚠️  WARNING: JWT_SECRET should be at least 64 characters even in development')
-      }
-      if (isWeakSecret(parsed.JWT_SECRET)) {
-        console.warn(
-          '⚠️  WARNING: JWT_SECRET contains weak patterns. Generate secure secret: openssl rand -base64 64'
-        )
       }
     }
 
