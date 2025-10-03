@@ -2,6 +2,13 @@
 
 # E2E Test Runner Script
 # Manages test database and server lifecycle
+#
+# Usage:
+#   npm run test:e2e:full              # Normal run (keeps volumes for speed)
+#   CLEAN=true npm run test:e2e:full   # Full cleanup (removes volumes)
+#
+# The script keeps Docker volumes by default to speed up repeated runs.
+# Use CLEAN=true to completely reset the database.
 
 set -e
 
@@ -11,10 +18,14 @@ echo "🧪 Starting E2E Test Setup..."
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Test database connection
 export TEST_DATABASE_URL="postgresql://testuser:testpassword@localhost:5433/fastify_test"
+
+# Check if full cleanup requested
+FULL_CLEANUP=${CLEAN:-false}
 
 # Cleanup function
 cleanup() {
@@ -27,9 +38,15 @@ cleanup() {
     wait $SERVER_PID 2>/dev/null || true
   fi
   
-  # Stop Docker containers (keep data for next run)
-  echo "Stopping test containers..."
-  docker compose -f docker-compose.test.yml stop
+  # Docker cleanup strategy
+  if [ "$FULL_CLEANUP" = "true" ]; then
+    echo "🗑️  Full cleanup: removing containers and volumes..."
+    docker compose -f docker-compose.test.yml down -v
+  else
+    echo "💾 Soft cleanup: stopping containers (keeping volumes for next run)..."
+    echo "   Tip: Use CLEAN=true for full cleanup"
+    docker compose -f docker-compose.test.yml stop
+  fi
   
   echo -e "${GREEN}✅ Cleanup complete${NC}"
 }
@@ -58,7 +75,16 @@ done
 # Step 2: Push schema to database
 echo -e "\n${YELLOW}📊 Step 2: Pushing schema to database...${NC}"
 export DATABASE_URL="$TEST_DATABASE_URL"
-npx prisma db push --force-reset --skip-generate --accept-data-loss
+
+if [ "$FULL_CLEANUP" = "true" ]; then
+  echo "🔄 Full reset: pushing schema with force-reset..."
+  npx prisma db push --force-reset --skip-generate --accept-data-loss
+else
+  echo "⚡ Quick reset: pushing schema (preserving data structure)..."
+  npx prisma db push --skip-generate --accept-data-loss 2>/dev/null || \
+    npx prisma db push --force-reset --skip-generate --accept-data-loss
+fi
+
 echo -e "${GREEN}✅ Schema pushed to database${NC}"
 
 # Step 3: Seed test data
