@@ -1,18 +1,14 @@
 import { createContainer, asValue, asClass, InjectionMode, Lifetime, AwilixContainer } from 'awilix'
 import { PrismaClient } from '@prisma/client'
-import { Logger } from '@/utils/logger'
+import { Logger } from '@/shared/utils/logger'
 import type { FastifyRedis } from '@fastify/redis'
 
-// Repositories
-import { UserRepository, IUserRepository } from '@/repositories/user.repository'
-import { ItemRepository, IItemRepository } from '@/repositories/item.repository'
-import { TokenRepository, ITokenRepository } from '@/repositories/token.repository'
-import { RedisTokenRepository } from '@/repositories/redis-token.repository'
-
-// Services
-import { AuthService } from '@/services/auth.service'
-import { UserService } from '@/services/user.service'
-import { ItemService } from '@/services/item.service'
+// Modules
+import { AuthService } from '@/modules/auth'
+import { UserService, UserRepository, type IUserRepository } from '@/modules/users'
+import { ItemService, ItemRepository, type IItemRepository } from '@/modules/items'
+import { TokenRepository, type ITokenRepository } from '@/shared/cache/token.repository'
+import { RedisTokenRepository } from '@/shared/cache/redis-token.repository'
 
 const logger = new Logger('Container')
 

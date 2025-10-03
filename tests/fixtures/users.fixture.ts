@@ -1,4 +1,4 @@
-import { UserRole } from '@/types'
+import { UserRole } from '@/shared/types'
 
 export interface TestUser {
   id: string

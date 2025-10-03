@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { PasswordUtils } from '@/utils/password'
+import { PasswordUtils } from '@/shared/utils/password'
 
 describe('PasswordUtils', () => {
   describe('hash and compare', () => {
@@ -68,4 +68,3 @@ describe('PasswordUtils', () => {
     })
   })
 })
-

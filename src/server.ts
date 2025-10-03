@@ -16,10 +16,10 @@ if (process.env.NODE_ENV === 'test' && process.env.USE_ENV_FILE) {
 
 // NOW import modules (after env is loaded)
 import { createApp } from '@/app'
-import { Logger } from '@/utils/logger'
+import { Logger } from '@/shared/utils/logger'
 import { Config } from '@/config'
-import { setupShutdownHandlers } from '@/utils/graceful-shutdown'
-import { setupProcessErrorHandlers } from '@/utils/process-handlers'
+import { setupShutdownHandlers } from '@/shared/utils/graceful-shutdown'
+import { setupProcessErrorHandlers } from '@/shared/utils/process-handlers'
 
 const logger = new Logger('Server')
 

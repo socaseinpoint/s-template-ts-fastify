@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
-import authRoutes from './auth.routes'
-import userRoutes from './user.routes'
-import itemRoutes from './item.routes'
+import { authController } from '@/modules/auth'
+import { userController } from '@/modules/users'
+import { itemController } from '@/modules/items'
 
 /**
  * Register all API routes with versioning
@@ -11,19 +11,19 @@ export async function registerRoutes(fastify: FastifyInstance) {
   await fastify.register(
     async api => {
       // Auth routes (public)
-      await api.register(authRoutes, { prefix: '/auth' })
+      await api.register(authController, { prefix: '/auth' })
 
       // User routes (protected)
-      await api.register(userRoutes, { prefix: '/users' })
+      await api.register(userController, { prefix: '/users' })
 
       // Item routes (protected)
-      await api.register(itemRoutes, { prefix: '/items' })
+      await api.register(itemController, { prefix: '/items' })
     },
     { prefix: '/v1' }
   )
 
   // Future: v2 routes can be added here
   // await fastify.register(async (api) => {
-  //   await api.register(authRoutesV2, { prefix: '/auth' })
+  //   await api.register(authControllerV2, { prefix: '/auth' })
   // }, { prefix: '/v2' })
 }

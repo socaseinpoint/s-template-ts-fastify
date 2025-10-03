@@ -72,39 +72,58 @@ npm run docker:logs   # Check Docker logs
 ```
 ts-service-template/
 ├── src/
-│   ├── config/          # Configuration management
-│   │   ├── index.ts     # Environment variables
-│   │   └── swagger.ts   # Swagger configuration
-│   ├── routes/          # API routes
-│   │   ├── index.ts     # Route registration
-│   │   ├── auth.routes.ts
-│   │   ├── user.routes.ts
-│   │   └── item.routes.ts
-│   ├── services/        # Business logic services
-│   │   ├── auth.service.ts
-│   │   ├── user.service.ts
-│   │   ├── item.service.ts
-│   │   ├── database.service.ts
-│   │   └── redis.service.ts
-│   ├── schemas/         # Request/Response schemas
-│   │   ├── auth.schemas.ts
-│   │   ├── user.schemas.ts
-│   │   └── item.schemas.ts
-│   ├── types/           # TypeScript type definitions
+│   ├── modules/              # Business domain modules
+│   │   ├── auth/             # Authentication module
+│   │   │   ├── auth.service.ts
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── auth.dto.ts
+│   │   │   ├── auth.schemas.ts
+│   │   │   └── index.ts      # Public API
+│   │   ├── users/            # User management module
+│   │   │   ├── user.service.ts
+│   │   │   ├── user.repository.ts
+│   │   │   ├── user.controller.ts
+│   │   │   ├── user.dto.ts
+│   │   │   ├── user.schemas.ts
+│   │   │   └── index.ts
+│   │   └── items/            # Items module
+│   │       ├── item.service.ts
+│   │       ├── item.repository.ts
+│   │       ├── item.controller.ts
+│   │       ├── item.dto.ts
+│   │       ├── item.schemas.ts
+│   │       └── index.ts
+│   ├── shared/               # Shared components
+│   │   ├── database/         # Database services
+│   │   │   ├── prisma.service.ts
+│   │   │   └── base.repository.ts
+│   │   ├── cache/            # Cache/Redis
+│   │   │   └── token.repository.ts
+│   │   ├── middleware/       # HTTP middleware
+│   │   ├── plugins/          # Fastify plugins
+│   │   ├── utils/            # Utilities
+│   │   │   ├── logger.ts
+│   │   │   ├── errors.ts
+│   │   │   └── helpers.ts
+│   │   └── types/            # Type definitions
+│   ├── config/               # Configuration
 │   │   ├── index.ts
-│   │   └── fastify.d.ts
-│   ├── utils/           # Utility functions
-│   │   ├── logger.ts
-│   │   ├── errors.ts
-│   │   └── helpers.ts
-│   └── server.ts        # Application entry point
-├── prisma/              # Prisma ORM (optional)
+│   │   └── swagger.ts
+│   ├── routes/               # Route registration
+│   │   └── index.ts
+│   ├── container.ts          # DI container
+│   ├── app.ts                # App factory
+│   └── server.ts             # Entry point
+├── prisma/                   # Prisma ORM
 │   └── schema.prisma
-├── dist/                # Compiled output
-├── .husky/              # Git hooks
-├── .env.example         # Environment variables template
-├── tsconfig.json        # TypeScript configuration
-├── vitest.config.ts     # Test configuration
+├── tests/                    # Test suites
+│   ├── unit/
+│   └── e2e/
+├── dist/                     # Compiled output
+├── .husky/                   # Git hooks
+├── .env.example              # Environment template
+├── tsconfig.json             # TypeScript config
+├── vitest.config.ts          # Test config
 └── package.json
 ```
 

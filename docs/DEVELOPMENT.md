@@ -41,47 +41,97 @@ npm test             # Run unit tests
 
 ```
 src/
-├── app.ts              # Fastify app factory
-├── server.ts           # Entry point
-├── container.ts        # DI container
+├── modules/                    # Business domain modules
+│   ├── auth/                   # Authentication module
+│   │   ├── auth.service.ts     # Business logic
+│   │   ├── auth.controller.ts  # HTTP handlers
+│   │   ├── auth.dto.ts         # DTOs
+│   │   ├── auth.schemas.ts     # Zod schemas
+│   │   └── index.ts            # Public API
+│   │
+│   ├── users/                  # User management module
+│   │   ├── user.service.ts
+│   │   ├── user.repository.ts  # Data access
+│   │   ├── user.controller.ts
+│   │   ├── user.dto.ts
+│   │   ├── user.schemas.ts
+│   │   └── index.ts
+│   │
+│   └── items/                  # Items module
+│       ├── item.service.ts
+│       ├── item.repository.ts
+│       ├── item.controller.ts
+│       ├── item.dto.ts
+│       ├── item.schemas.ts
+│       └── index.ts
 │
-├── dto/                # Data Transfer Objects
-│   ├── auth.dto.ts
-│   ├── user.dto.ts
-│   └── item.dto.ts
+├── shared/                     # Shared components
+│   ├── database/               # Database services
+│   │   ├── prisma.service.ts
+│   │   └── base.repository.ts
+│   ├── cache/                  # Cache/Redis
+│   │   ├── token.repository.ts
+│   │   └── redis-token.repository.ts
+│   ├── middleware/             # HTTP middleware
+│   │   ├── authenticate.middleware.ts
+│   │   ├── error-handler.middleware.ts
+│   │   └── ...
+│   ├── plugins/                # Fastify plugins
+│   │   ├── jwt.plugin.ts
+│   │   └── request-context.plugin.ts
+│   ├── utils/                  # Utilities
+│   │   ├── logger.ts
+│   │   ├── errors.ts
+│   │   ├── password.ts
+│   │   └── helpers.ts
+│   └── types/                  # Type definitions
+│       └── fastify.d.ts
 │
-├── routes/             # HTTP endpoints
-│   ├── auth.routes.ts
-│   ├── user.routes.ts
-│   └── item.routes.ts
+├── config/                     # Configuration
+│   ├── index.ts                # Environment vars
+│   └── swagger.ts              # Swagger config
 │
-├── services/           # Business logic
-│   ├── auth.service.ts
-│   ├── user.service.ts
-│   └── item.service.ts
+├── routes/                     # Route registration
+│   └── index.ts                # Registers all modules
 │
-├── repositories/       # Data access layer
-│   ├── base.repository.ts
-│   ├── user.repository.ts
-│   └── item.repository.ts
-│
-├── middleware/         # Custom middleware
-├── schemas/            # Zod schemas
-├── utils/              # Utilities
-└── plugins/            # Fastify plugins
+├── container.ts                # DI container
+├── app.ts                      # Fastify app factory
+└── server.ts                   # Entry point
 ```
+
+### Module Structure Benefits
+
+**✅ Domain-Driven Design**
+- Each module encapsulates a business domain
+- All related code is co-located
+- Easy to understand and maintain
+
+**✅ Scalability**
+- Add new modules without touching existing code
+- Clear boundaries between domains
+- Can extract modules to microservices later
+
+**✅ Developer Experience**
+- No jumping between folders for one feature
+- Public API through `index.ts`
+- Clear module dependencies
 
 ## Path Aliases
 
 Use `@/` to import from `src/`:
 
 ```typescript
-// ✅ Good
-import { Logger } from '@/utils/logger'
-import { UserService } from '@/services/user.service'
+// ✅ Good - Import from modules
+import { AuthService } from '@/modules/auth'
+import { UserService } from '@/modules/users'
+import { ItemService } from '@/modules/items'
 
-// ❌ Avoid
-import { Logger } from '../../../utils/logger'
+// ✅ Good - Import from shared
+import { Logger } from '@/shared/utils/logger'
+import { authenticateMiddleware } from '@/shared/middleware/authenticate.middleware'
+
+// ❌ Avoid relative imports
+import { Logger } from '../../../shared/utils/logger'
 ```
 
 ## Dependency Injection

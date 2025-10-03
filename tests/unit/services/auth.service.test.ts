@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import jwt from 'jsonwebtoken'
 import { Config } from '@/config'
 import { Role } from '@prisma/client'
-import type { IUserRepository } from '@/repositories/user.repository'
-import type { ITokenRepository } from '@/repositories/token.repository'
+import type { IUserRepository } from '@/modules/users/user.repository'
+import type { ITokenRepository } from '@/shared/cache/token.repository'
 
 // Mock PasswordUtils
-vi.mock('@/utils/password', () => ({
+vi.mock('@/shared/utils/password', () => ({
   PasswordUtils: {
     hash: vi.fn().mockResolvedValue('hashed-password'),
     compare: vi.fn().mockImplementation((plain, _hash) => {
@@ -34,8 +34,8 @@ vi.mock('@/utils/password', () => ({
 }))
 
 // Import after mocks
-import { AuthService } from '@/services/auth.service'
-import { PasswordUtils } from '@/utils/password'
+import { AuthService } from '@/modules/auth/auth.service'
+import { PasswordUtils } from '@/shared/utils/password'
 
 describe('AuthService', () => {
   let authService: AuthService
