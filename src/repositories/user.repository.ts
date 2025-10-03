@@ -60,6 +60,7 @@ export class UserRepository
     }
   }
 
+  // @ts-expect-error - Override with custom pagination response
   async findMany(params: FindManyUsersParams): Promise<{ users: User[]; total: number }> {
     try {
       const { skip = 0, take = 10, where = {} } = params

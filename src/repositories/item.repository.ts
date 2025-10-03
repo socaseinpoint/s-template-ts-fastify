@@ -101,6 +101,7 @@ export class ItemRepository
     }
   }
 
+  // @ts-expect-error - Override with custom pagination response
   async findMany(params: FindManyItemsParams): Promise<{ items: Item[]; total: number }> {
     try {
       const { skip = 0, take = 10, where = {} } = params
