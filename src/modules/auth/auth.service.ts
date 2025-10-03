@@ -5,7 +5,7 @@ import { UnauthorizedError, ValidationError, AlreadyExistsError } from '@/shared
 import { PasswordUtils } from '@/shared/utils/password'
 import { Config } from '@/config'
 import { IUserRepository, type CreateUserData } from '@/modules/users/user.repository'
-import { ITokenRepository } from '@/shared/cache/token.repository'
+import { ITokenRepository } from '@/shared/cache/redis-token.repository'
 import { Role } from '@prisma/client'
 import { UserRole, TOKEN_TYPES } from '@/constants'
 import { TokenPayload } from '@/shared/types'

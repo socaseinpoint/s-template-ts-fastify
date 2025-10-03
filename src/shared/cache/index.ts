@@ -1,8 +1,6 @@
 /**
  * Cache Module
- * Exports token repository (Redis/In-Memory)
+ * Exports Redis-based token repository
  */
 
-export { type ITokenRepository } from './token.repository'
-export { RedisTokenRepository } from './redis-token.repository'
-
+export { type ITokenRepository, RedisTokenRepository } from './redis-token.repository'

@@ -1,6 +1,19 @@
 import { Logger } from '@/shared/utils/logger'
-import { ITokenRepository } from './token.repository'
 import type { FastifyRedis } from '@fastify/redis'
+
+/**
+ * Token Repository interface for managing refresh tokens and blacklists
+ */
+export interface ITokenRepository {
+  set(key: string, value: string, expiresInSeconds: number): Promise<void>
+  get(key: string): Promise<string | null>
+  del(key: string): Promise<void>
+  addToSet(key: string, value: string, expiresInSeconds?: number): Promise<void>
+  getSet(key: string): Promise<string[]>
+  removeFromSet(key: string, value: string): Promise<void>
+  cleanupExpiredTokens(userId: string): Promise<void>
+  dispose(): void
+}
 
 /**
  * Redis-based Token Repository

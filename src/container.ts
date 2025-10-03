@@ -7,15 +7,14 @@ import type { FastifyRedis } from '@fastify/redis'
 import { AuthService } from '@/modules/auth'
 import { UserService, UserRepository, type IUserRepository } from '@/modules/users'
 import { ItemService, ItemRepository, type IItemRepository } from '@/modules/items'
-import { TokenRepository, type ITokenRepository } from '@/shared/cache/token.repository'
-import { RedisTokenRepository } from '@/shared/cache/redis-token.repository'
+import { RedisTokenRepository, type ITokenRepository } from '@/shared/cache/redis-token.repository'
 
 const logger = new Logger('Container')
 
 export interface ICradle {
   // Infrastructure
   prisma: PrismaClient
-  redis?: FastifyRedis
+  redis: FastifyRedis // Required for token storage and rate limiting
 
   // Repositories
   userRepository: IUserRepository
@@ -30,7 +29,7 @@ export interface ICradle {
 
 export interface ContainerOptions {
   prisma?: PrismaClient
-  redis?: FastifyRedis
+  redis: FastifyRedis // Required for token storage
   skipConnect?: boolean
 }
 
@@ -39,7 +38,7 @@ export interface ContainerOptions {
  * SCOPED lifetime for stateless request handling
  */
 export async function createDIContainer(
-  options: ContainerOptions = {}
+  options: ContainerOptions
 ): Promise<AwilixContainer<ICradle>> {
   const container = createContainer<ICradle>({
     injectionMode: InjectionMode.CLASSIC,
@@ -94,13 +93,11 @@ export async function createDIContainer(
     prisma: asValue(prismaClient),
   })
 
-  // Register Redis if available
-  if (options.redis) {
-    container.register({
-      redis: asValue(options.redis),
-    })
-    logger.info('✅ Redis available for distributed token storage')
-  }
+  // Register Redis (required)
+  container.register({
+    redis: asValue(options.redis),
+  })
+  logger.info('✅ Redis registered for distributed token storage')
 
   // Register repositories with SINGLETON lifetime
   // Since repositories are stateless and only depend on Prisma/Redis,
@@ -108,10 +105,7 @@ export async function createDIContainer(
   container.register({
     userRepository: asClass(UserRepository, { lifetime: Lifetime.SINGLETON }),
     itemRepository: asClass(ItemRepository, { lifetime: Lifetime.SINGLETON }),
-    // Choose TokenRepository implementation based on Redis availability
-    tokenRepository: options.redis
-      ? asClass(RedisTokenRepository, { lifetime: Lifetime.SINGLETON })
-      : asClass(TokenRepository, { lifetime: Lifetime.SINGLETON }),
+    tokenRepository: asClass(RedisTokenRepository, { lifetime: Lifetime.SINGLETON }),
   })
 
   // Register business services with SINGLETON lifetime
@@ -122,9 +116,7 @@ export async function createDIContainer(
     itemService: asClass(ItemService, { lifetime: Lifetime.SINGLETON }),
   })
 
-  logger.info(
-    `✅ DI Container initialized (Token storage: ${options.redis ? 'Redis' : 'In-Memory'})`
-  )
+  logger.info('✅ DI Container initialized (Token storage: Redis)')
 
   return container
 }
@@ -137,13 +129,21 @@ export async function disposeDIContainer(container: AwilixContainer<ICradle>): P
   logger.info('Disposing DI container...')
 
   try {
+    // Cleanup TokenRepository interval (prevents memory leak)
+    const tokenRepository = container.cradle.tokenRepository
+    if (tokenRepository && typeof tokenRepository.dispose === 'function') {
+      tokenRepository.dispose()
+      logger.info('✅ Token repository disposed')
+    }
+
+    // Disconnect Prisma client
     const prisma = container.cradle.prisma
     if (prisma && typeof prisma.$disconnect === 'function') {
       await prisma.$disconnect()
       logger.info('✅ Prisma client disconnected')
     }
   } catch (error) {
-    logger.error('Error disconnecting Prisma', error)
+    logger.error('Error disconnecting resources', error)
   }
 
   // Dispose container

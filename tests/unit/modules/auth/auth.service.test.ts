@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken'
 import { Config } from '@/config'
 import { Role } from '@prisma/client'
 import type { IUserRepository } from '@/modules/users/user.repository'
-import type { ITokenRepository } from '@/shared/cache/token.repository'
+import type { ITokenRepository } from '@/shared/cache/redis-token.repository'
 
 // Mock PasswordUtils
 vi.mock('@/shared/utils/password', () => ({
